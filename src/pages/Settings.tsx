@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, BarChart3, Building2, Hotel, Save, Plus, Trash2, Wifi, WifiOff, MapPin } from "lucide-react";
+import { ChevronLeft, BarChart3, Building2, Hotel, Save, Plus, Trash2, Wifi, WifiOff, MapPin, Bug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +23,14 @@ interface CitySuggestion {
   name: string;
   country: string;
   state: string | null;
+  lat: number;
+  lon: number;
   label: string;
+}
+
+interface DebugInfo {
+  weather: { params: string; status: string; count: string } | null;
+  events: { params: string; status: string; count: string } | null;
 }
 
 export default function Settings() {
@@ -33,7 +40,7 @@ export default function Settings() {
 
   const [orgName, setOrgName] = useState("");
   const [hotelName, setHotelName] = useState("");
-  const [city, setCity] = useState("");
+  const [selectedCity, setSelectedCity] = useState<CitySuggestion | null>(null);
   const [cityQuery, setCityQuery] = useState("");
   const [citySuggestions, setCitySuggestions] = useState<CitySuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -45,6 +52,9 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [apiStatus, setApiStatus] = useState<ApiStatus | null>(null);
   const [checkingApis, setCheckingApis] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<DebugInfo>({ weather: null, events: null });
+  const [debugLoading, setDebugLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
@@ -66,8 +76,17 @@ export default function Settings() {
   useEffect(() => {
     if (activeHotel) {
       setHotelName(activeHotel.name);
-      setCity(activeHotel.city);
-      setCityQuery(activeHotel.city);
+      setCityQuery(activeHotel.city_name || activeHotel.city);
+      setSelectedCity(
+        activeHotel.city_name ? {
+          name: activeHotel.city_name,
+          country: activeHotel.country_code || "",
+          state: null,
+          lat: activeHotel.latitude || 0,
+          lon: activeHotel.longitude || 0,
+          label: `${activeHotel.city_name}${activeHotel.country_code ? `, ${activeHotel.country_code}` : ""}`,
+        } : null
+      );
       setRooms(String(activeHotel.rooms));
       setBasePrice(String(activeHotel.base_price));
       supabase
@@ -113,13 +132,13 @@ export default function Settings() {
 
   const handleCityInput = (value: string) => {
     setCityQuery(value);
-    setCity("");
+    setSelectedCity(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => fetchCitySuggestions(value), 300);
   };
 
   const selectCity = (s: CitySuggestion) => {
-    setCity(s.name);
+    setSelectedCity(s);
     setCityQuery(s.label);
     setShowSuggestions(false);
   };
@@ -134,12 +153,23 @@ export default function Settings() {
         const { error } = await supabase.from("organizations").update({ name: orgName.trim() }).eq("id", currentOrg.organization_id);
         if (error) throw error;
       }
-      const { error: hotelError } = await supabase.from("hotels").update({
+
+      const updatePayload: Record<string, unknown> = {
         name: hotelName.trim(),
-        city: city.trim() || cityQuery.trim(),
         rooms: parseInt(rooms) || activeHotel.rooms,
         base_price: parseFloat(basePrice) || activeHotel.base_price,
-      }).eq("id", activeHotel.id);
+      };
+
+      // If a structured city was selected, save all fields properly
+      if (selectedCity) {
+        updatePayload.city = selectedCity.name;
+        updatePayload.city_name = selectedCity.name;
+        updatePayload.country_code = selectedCity.country;
+        updatePayload.latitude = selectedCity.lat;
+        updatePayload.longitude = selectedCity.lon;
+      }
+
+      const { error: hotelError } = await supabase.from("hotels").update(updatePayload).eq("id", activeHotel.id);
       if (hotelError) throw hotelError;
       await refetch();
       toast({ title: "Settings saved", description: "Your changes have been applied." });
@@ -166,6 +196,50 @@ export default function Settings() {
     const { error } = await supabase.from("competitor_rates").delete().eq("id", id);
     if (error) { toast({ title: "Delete failed", description: error.message, variant: "destructive" }); return; }
     setCompetitors((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  // Debug: test API calls and show raw results
+  const runDebugTest = async () => {
+    if (!activeHotel) return;
+    setDebugLoading(true);
+    const city = activeHotel.city_name || activeHotel.city;
+    const newDebug: DebugInfo = { weather: null, events: null };
+
+    try {
+      const weatherBody: Record<string, unknown> = { city };
+      if (activeHotel.latitude != null && activeHotel.longitude != null) {
+        weatherBody.lat = activeHotel.latitude;
+        weatherBody.lon = activeHotel.longitude;
+      }
+      const { data: wData, error: wErr } = await supabase.functions.invoke("weather", { body: weatherBody });
+      newDebug.weather = {
+        params: JSON.stringify(weatherBody),
+        status: wErr ? `Error: ${wErr.message}` : `${wData?.error ? "API Error: " + wData.error : "OK"}`,
+        count: wData?.data ? `${wData.data.length} forecast days` : "0",
+      };
+    } catch (err: any) {
+      newDebug.weather = { params: city, status: `Exception: ${err.message}`, count: "0" };
+    }
+
+    try {
+      const eventsBody: Record<string, unknown> = { city };
+      if (activeHotel.country_code) eventsBody.countryCode = activeHotel.country_code;
+      if (activeHotel.latitude != null && activeHotel.longitude != null) {
+        eventsBody.lat = activeHotel.latitude;
+        eventsBody.lon = activeHotel.longitude;
+      }
+      const { data: eData, error: eErr } = await supabase.functions.invoke("events", { body: eventsBody });
+      newDebug.events = {
+        params: JSON.stringify(eventsBody),
+        status: eErr ? `Error: ${eErr.message}` : `${eData?.error ? "API Error: " + eData.error : "OK"}`,
+        count: eData?.data ? `${eData.data.length} events found` : eData?.message || "0 events",
+      };
+    } catch (err: any) {
+      newDebug.events = { params: city, status: `Exception: ${err.message}`, count: "0" };
+    }
+
+    setDebugInfo(newDebug);
+    setDebugLoading(false);
   };
 
   const statusIcon = (status: string) => {
@@ -205,8 +279,14 @@ export default function Settings() {
 
         {/* Integrations Status */}
         <div className="rounded-xl border border-border bg-card p-6 space-y-4">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Wifi className="h-4 w-4 text-primary" /> Integrations
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Wifi className="h-4 w-4 text-primary" /> Integrations
+            </div>
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => { setShowDebug(!showDebug); if (!showDebug && !debugInfo.weather) runDebugTest(); }}>
+              <Bug className="h-3.5 w-3.5" />
+              {showDebug ? "Hide Debug" : "Debug"}
+            </Button>
           </div>
           {checkingApis ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -233,6 +313,41 @@ export default function Settings() {
               ))}
             </div>
           ) : null}
+
+          {/* Debug Panel */}
+          {showDebug && (
+            <div className="space-y-3 rounded-lg border border-dashed border-warning/50 bg-warning/5 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-warning">API Debug Panel</span>
+                <Button variant="outline" size="sm" className="h-6 text-xs" onClick={runDebugTest} disabled={debugLoading}>
+                  {debugLoading ? "Testing…" : "Re-test APIs"}
+                </Button>
+              </div>
+              {debugInfo.weather && (
+                <div className="space-y-1">
+                  <span className="text-xs font-semibold">Weather API</span>
+                  <div className="text-xs text-muted-foreground font-mono bg-muted/50 rounded p-2 space-y-0.5">
+                    <div><span className="text-foreground">Params:</span> {debugInfo.weather.params}</div>
+                    <div><span className="text-foreground">Status:</span> {debugInfo.weather.status}</div>
+                    <div><span className="text-foreground">Result:</span> {debugInfo.weather.count}</div>
+                  </div>
+                </div>
+              )}
+              {debugInfo.events && (
+                <div className="space-y-1">
+                  <span className="text-xs font-semibold">Events API</span>
+                  <div className="text-xs text-muted-foreground font-mono bg-muted/50 rounded p-2 space-y-0.5">
+                    <div><span className="text-foreground">Params:</span> {debugInfo.events.params}</div>
+                    <div><span className="text-foreground">Status:</span> {debugInfo.events.status}</div>
+                    <div><span className="text-foreground">Result:</span> {debugInfo.events.count}</div>
+                  </div>
+                </div>
+              )}
+              {!debugInfo.weather && !debugInfo.events && !debugLoading && (
+                <p className="text-xs text-muted-foreground">Click "Re-test APIs" to run a diagnostic.</p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Organization */}
@@ -260,40 +375,46 @@ export default function Settings() {
                 <Label htmlFor="hotelName">Hotel Name</Label>
                 <Input id="hotelName" value={hotelName} onChange={(e) => setHotelName(e.target.value)} disabled={!canEdit} />
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-2 relative" ref={suggestionsRef}>
-                  <Label htmlFor="city">City</Label>
-                  <div className="relative">
-                    <Input
-                      id="city"
-                      value={cityQuery}
-                      onChange={(e) => handleCityInput(e.target.value)}
-                      onFocus={() => citySuggestions.length > 0 && setShowSuggestions(true)}
-                      disabled={!canEdit}
-                      autoComplete="off"
-                    />
-                    {loadingCities && (
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                      </div>
-                    )}
-                  </div>
-                  {showSuggestions && citySuggestions.length > 0 && (
-                    <div className="absolute z-50 top-full mt-1 w-full max-w-[280px] rounded-lg border border-border bg-card shadow-lg overflow-hidden">
-                      {citySuggestions.map((s, i) => (
-                        <button
-                          key={`${s.name}-${s.country}-${i}`}
-                          type="button"
-                          onClick={() => selectCity(s)}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
-                        >
-                          <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <span className="truncate">{s.label}</span>
-                        </button>
-                      ))}
+              <div className="space-y-2 relative" ref={suggestionsRef}>
+                <Label htmlFor="city">City</Label>
+                <div className="relative">
+                  <Input
+                    id="city"
+                    value={cityQuery}
+                    onChange={(e) => handleCityInput(e.target.value)}
+                    onFocus={() => citySuggestions.length > 0 && setShowSuggestions(true)}
+                    disabled={!canEdit}
+                    autoComplete="off"
+                  />
+                  {loadingCities && (
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                     </div>
                   )}
                 </div>
+                {showSuggestions && citySuggestions.length > 0 && (
+                  <div className="absolute z-50 top-full mt-1 w-full rounded-lg border border-border bg-card shadow-lg overflow-hidden">
+                    {citySuggestions.map((s, i) => (
+                      <button
+                        key={`${s.name}-${s.country}-${i}`}
+                        type="button"
+                        onClick={() => selectCity(s)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
+                        title={s.label}
+                      >
+                        <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="truncate">{s.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {selectedCity && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {selectedCity.name}, {selectedCity.country} — lat: {selectedCity.lat.toFixed(4)}, lon: {selectedCity.lon.toFixed(4)}
+                  </p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="rooms">Rooms</Label>
                   <Input id="rooms" type="number" value={rooms} onChange={(e) => setRooms(e.target.value)} disabled={!canEdit} />

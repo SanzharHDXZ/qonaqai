@@ -188,9 +188,10 @@ export default function Dashboard() {
       }),
       fetchEventData(city, eventOpts).then((result) => {
         setEventData(result.data);
-        if (!result.available) warnings.push("Events data unavailable");
-        if (result.available && result.data.length === 0) {
-          console.warn("[Dashboard] No events found for city:", city);
+        if (!result.available) {
+          warnings.push("Events API error — external signal impact set to 0");
+        } else if (result.data.length === 0) {
+          warnings.push("No events found for this city and date range");
         }
       }),
     ]).then(() => setApiWarnings(warnings));

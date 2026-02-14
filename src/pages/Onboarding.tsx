@@ -71,9 +71,14 @@ export default function Onboarding() {
     debounceRef.current = setTimeout(() => fetchCitySuggestions(value), 300);
   };
 
-  const selectCity = (suggestion: CitySuggestion) => {
+  const [selectedLat, setSelectedLat] = useState<number | null>(null);
+  const [selectedLon, setSelectedLon] = useState<number | null>(null);
+
+  const selectCity = (suggestion: CitySuggestion & { lat?: number; lon?: number }) => {
     setCity(suggestion.name);
     setCityQuery(suggestion.label);
+    setSelectedLat(suggestion.lat ?? null);
+    setSelectedLon(suggestion.lon ?? null);
     setShowSuggestions(false);
     setCitySuggestions([]);
   };
@@ -89,7 +94,7 @@ export default function Onboarding() {
       });
       if (orgError) throw orgError;
 
-      const { error: hotelError } = await supabase.rpc("create_hotel_for_org", {
+      const { data: hotelId, error: hotelError } = await supabase.rpc("create_hotel_for_org", {
         _org_id: orgId,
         _name: hotelName.trim(),
         _city: city.trim(),
@@ -97,6 +102,11 @@ export default function Onboarding() {
         _base_price: parseFloat(basePrice) || 120,
       });
       if (hotelError) throw hotelError;
+
+      // Save lat/lon to the hotel record
+      if (hotelId && selectedLat !== null && selectedLon !== null) {
+        await supabase.from("hotels").update({ latitude: selectedLat, longitude: selectedLon }).eq("id", hotelId);
+      }
 
       await refreshMemberships();
 

@@ -176,8 +176,6 @@ export default function Dashboard() {
   useEffect(() => {
     if (!activeHotel?.city) return;
     const city = activeHotel.city;
-    const lat = activeHotel.latitude;
-    const lon = activeHotel.longitude;
     const warnings: string[] = [];
 
     Promise.all([
@@ -185,16 +183,15 @@ export default function Dashboard() {
         setWeatherData(result.data);
         if (!result.available) warnings.push("Weather data unavailable");
       }),
-      fetchEventData(city, lat, lon).then((result) => {
+      fetchEventData(city).then((result) => {
         setEventData(result.data);
         if (!result.available) warnings.push("Events data unavailable");
         if (result.available && result.data.length === 0) {
-          warnings.push("No events found for selected dates");
-          console.warn("[Dashboard] No events returned by API for selected range. City:", city, "Lat:", lat, "Lon:", lon);
+          console.warn("[Dashboard] No events found for city:", city);
         }
       }),
     ]).then(() => setApiWarnings(warnings));
-  }, [activeHotel?.city, activeHotel?.latitude, activeHotel?.longitude]);
+  }, [activeHotel?.city]);
 
   // Derive hotel profile from active hotel (real DB data)
   const hotel = useMemo(() => {
@@ -345,35 +342,6 @@ export default function Dashboard() {
             <AlertCircle className="h-4 w-4 shrink-0" />
             <span>{apiWarnings.join(" · ")} — external signal impact set to 0</span>
           </div>
-        )}
-
-        {/* Pricing Debug Panel (temporary) */}
-        {activeDay && (
-          <details className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs">
-            <summary className="cursor-pointer font-medium text-muted-foreground">🔧 Pricing Debug Panel</summary>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <span className="text-muted-foreground">Base Weighted: </span>
-                <span className="font-mono font-medium">{safeNum(activeDay.demandComponents.weekdayAvgScore * 0.30 + activeDay.demandComponents.trendScore * 0.20 + activeDay.demandComponents.seasonalityScore * 0.20 + activeDay.demandComponents.eventScore * 0.15 + activeDay.demandComponents.bookingPaceScore * 0.15, 0).toFixed(1)}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">External Signal: </span>
-                <span className="font-mono font-medium">{safeNum(activeDay.externalSignalScore).toFixed(1)}</span>
-                <span className="text-muted-foreground ml-1">(E:{safeNum(activeDay.externalEventImpact).toFixed(1)} W:{safeNum(activeDay.externalWeatherImpact).toFixed(1)} C:{safeNum(activeDay.externalCompetitorImpact).toFixed(1)})</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Final Demand: </span>
-                <span className="font-mono font-bold">{safeNum(activeDay.demandScore)}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Tier: </span>
-                <span className={`font-mono font-bold ${activeDay.pricingTier === "discount" ? "text-muted-foreground" : activeDay.pricingTier === "base" ? "text-foreground" : activeDay.pricingTier === "premium" ? "text-warning" : "text-destructive"}`}>
-                  {activeDay.pricingTier}
-                </span>
-                <span className="text-muted-foreground ml-1">({safeNum(activeDay.priceMultiplier)}x)</span>
-              </div>
-            </div>
-          </details>
         )}
 
         {/* Welcome + Data Status */}

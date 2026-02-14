@@ -87,6 +87,36 @@ export type Database = {
           },
         ]
       }
+      event_cache: {
+        Row: {
+          category: string
+          city: string
+          estimated_attendance: number
+          event_date: string
+          fetched_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          category?: string
+          city: string
+          estimated_attendance?: number
+          event_date: string
+          fetched_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          category?: string
+          city?: string
+          estimated_attendance?: number
+          event_date?: string
+          fetched_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       historical_data: {
         Row: {
           average_daily_rate: number
@@ -290,6 +320,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      weather_cache: {
+        Row: {
+          city: string
+          condition: string
+          date: string
+          fetched_at: string
+          id: string
+          rain_probability: number
+          temperature: number
+        }
+        Insert: {
+          city: string
+          condition?: string
+          date: string
+          fetched_at?: string
+          id?: string
+          rain_probability?: number
+          temperature: number
+        }
+        Update: {
+          city?: string
+          condition?: string
+          date?: string
+          fetched_at?: string
+          id?: string
+          rain_probability?: number
+          temperature?: number
+        }
+        Relationships: []
       }
     }
     Views: {

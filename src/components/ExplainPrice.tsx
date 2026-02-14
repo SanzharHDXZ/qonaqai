@@ -1,4 +1,4 @@
-import { Info, X, Zap, Cloud, Calendar, Building2 } from "lucide-react";
+import { Info, X, Zap, Cloud, Calendar, Building2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { DailyForecast } from "@/data/mockData";
 
@@ -89,6 +89,8 @@ export default function ExplainPrice({ forecast, basePrice, onClose }: ExplainPr
   };
 
   const hasExternalSignals = forecast.externalSignalScore > 0;
+  const hasWeatherData = forecast.weatherAvailable !== false;
+  const hasEventData = forecast.eventsAvailable !== false;
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
@@ -134,8 +136,22 @@ export default function ExplainPrice({ forecast, basePrice, onClose }: ExplainPr
 
       {/* External Market Signals */}
       <div className="rounded-lg border border-border p-4 mb-5 space-y-3">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          External Market Signals (+{forecast.externalSignalScore.toFixed(1)} pts)
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            External Market Signals (+{forecast.externalSignalScore.toFixed(1)} pts)
+          </div>
+          <div className="flex items-center gap-1">
+            {!hasWeatherData && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning">
+                <AlertCircle className="h-3 w-3" /> No weather
+              </span>
+            )}
+            {!hasEventData && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning">
+                <AlertCircle className="h-3 w-3" /> No events
+              </span>
+            )}
+          </div>
         </div>
         <div className="grid gap-2">
           <div className="flex items-center justify-between text-sm">

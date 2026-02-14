@@ -1,47 +1,54 @@
 /**
  * External Market Signals Layer
  *
- * Provides a modular, API-ready architecture for integrating
- * real-world signals into the demand forecasting model.
- *
- * Three signal types:
- *   1. Event Impact (0–10 scale)
- *   2. Weather Impact (-5 to +5 scale)
- *   3. Competitor Impact (-5 to +5 scale)
+ * Integrates real-world data from:
+ *   1. OpenWeather API (weather forecasts) — via edge function
+ *   2. Ticketmaster API (local events) — via edge function
+ *   3. Manual competitor rates (from DB)
  *
  * Combined External Signal Score: 0–20 (clamped)
- *
- * All functions are deterministic and fail gracefully (score = 0 on error).
- * API responses are cached with a 6-hour TTL.
+ * All functions fail gracefully (score = 0 on API error).
  */
 
-// ─── Cache Layer ───────────────────────────────────────
+import { supabase } from "@/integrations/supabase/client";
 
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
+// ─── Types ─────────────────────────────────────────────
+
+export interface LocalEvent {
+  name: string;
+  category: string;
+  estimatedAttendance: number;
+  date: string;
 }
 
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-const cache = new Map<string, CacheEntry<unknown>>();
-
-function getCached<T>(key: string): T | null {
-  const entry = cache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
-    cache.delete(key);
-    return null;
-  }
-  return entry.data as T;
+export interface WeatherData {
+  temperature: number;
+  rainProbability: number;
+  condition: string;
 }
 
-function setCache<T>(key: string, data: T): void {
-  cache.set(key, { data, timestamp: Date.now() });
+export interface CompetitorRate {
+  competitor_name: string;
+  price: number;
 }
 
-// ─── Event Impact ──────────────────────────────────────
+export interface ExternalSignalResult {
+  eventImpact: number;
+  weatherImpact: number;
+  competitorImpact: number;
+  totalScore: number;
+  weatherAvailable: boolean;
+  eventsAvailable: boolean;
+}
 
-/** Category weights for event types */
+export interface ApiStatus {
+  weather: "connected" | "error" | "unconfigured";
+  events: "connected" | "error" | "unconfigured";
+  competitor: "connected";
+}
+
+// ─── Category weights ──────────────────────────────────
+
 export const EVENT_CATEGORY_WEIGHTS: Record<string, number> = {
   conference: 1.2,
   concert: 1.1,
@@ -53,252 +60,223 @@ export const EVENT_CATEGORY_WEIGHTS: Record<string, number> = {
   other: 0.8,
 };
 
-export interface LocalEvent {
-  name: string;
-  category: string;
-  estimatedAttendance: number;
-  date: string; // YYYY-MM-DD
+// ─── In-memory cache for current session ───────────────
+
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const memCache = new Map<string, { data: unknown; ts: number }>();
+
+function getMemCached<T>(key: string): T | null {
+  const e = memCache.get(key);
+  if (!e || Date.now() - e.ts > CACHE_TTL_MS) return null;
+  return e.data as T;
 }
 
-/**
- * Compute event strength score for a given city and date.
- *
- * Formula: log(attendance + 1) × proximity_factor × category_weight
- * Normalized to 0–10 scale.
- *
- * Currently uses a deterministic rule-based fallback.
- * Replace the body of fetchEvents() with a real API call (e.g. Eventbrite)
- * when ready – the rest of the pipeline stays the same.
- */
-export function getEventImpact(
-  city: string,
-  date: Date,
-  events?: LocalEvent[]
-): number {
-  const cacheKey = `event:${city}:${date.toISOString().slice(0, 10)}`;
-  const cached = getCached<number>(cacheKey);
-  if (cached !== null) return cached;
+function setMemCache<T>(key: string, data: T): void {
+  memCache.set(key, { data, ts: Date.now() });
+}
 
-  const dayEvents = events ?? fetchEventsRuleBased(city, date);
-  if (dayEvents.length === 0) {
-    setCache(cacheKey, 0);
-    return 0;
+// ─── Weather (Real API via Edge Function) ──────────────
+
+export async function fetchWeatherData(city: string): Promise<{ data: WeatherData[]; available: boolean }> {
+  if (!city) return { data: [], available: false };
+
+  const cacheKey = `weather:${city.toLowerCase()}`;
+  const cached = getMemCached<WeatherData[]>(cacheKey);
+  if (cached) return { data: cached, available: true };
+
+  try {
+    const { data, error } = await supabase.functions.invoke("weather", {
+      body: { city },
+    });
+
+    if (error || !data?.data || data.data.length === 0) {
+      console.warn("Weather API unavailable:", error?.message || data?.error);
+      return { data: [], available: false };
+    }
+
+    const weatherData: WeatherData[] = data.data.map((d: any) => ({
+      temperature: Number(d.temperature),
+      rainProbability: Number(d.rain_probability),
+      condition: d.condition || "Clear",
+    }));
+
+    setMemCache(cacheKey, weatherData);
+    return { data: weatherData, available: true };
+  } catch (err) {
+    console.warn("Weather fetch failed:", err);
+    return { data: [], available: false };
+  }
+}
+
+export function computeWeatherImpact(weather: WeatherData | undefined, date: Date): number {
+  if (!weather) return 0;
+
+  const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+  const isSevere = ["Thunderstorm", "Snow", "Extreme"].includes(weather.condition);
+
+  if (isSevere) return -5;
+
+  let impact = 0;
+
+  if (weather.rainProbability > 0.7 && isWeekend) {
+    impact = -3;
+  } else if (weather.rainProbability > 0.5) {
+    impact = -1;
   }
 
-  // Sum contributions from all events on this day
+  if (weather.temperature >= 18 && weather.temperature <= 28 && isWeekend && weather.rainProbability < 0.3) {
+    impact = Math.max(impact, 2);
+  }
+
+  return Math.max(-5, Math.min(5, impact));
+}
+
+// ─── Events (Real API via Edge Function) ───────────────
+
+export async function fetchEventData(city: string): Promise<{ data: LocalEvent[]; available: boolean }> {
+  if (!city) return { data: [], available: false };
+
+  const cacheKey = `events:${city.toLowerCase()}`;
+  const cached = getMemCached<LocalEvent[]>(cacheKey);
+  if (cached) return { data: cached, available: true };
+
+  try {
+    const { data, error } = await supabase.functions.invoke("events", {
+      body: { city },
+    });
+
+    if (error || !data?.data || data.data.length === 0) {
+      console.warn("Events API unavailable:", error?.message || data?.error);
+      return { data: [], available: false };
+    }
+
+    const events: LocalEvent[] = data.data.map((d: any) => ({
+      name: d.name,
+      category: d.category || "other",
+      estimatedAttendance: Number(d.estimated_attendance) || 1000,
+      date: d.event_date,
+    }));
+
+    setMemCache(cacheKey, events);
+    return { data: events, available: true };
+  } catch (err) {
+    console.warn("Events fetch failed:", err);
+    return { data: [], available: false };
+  }
+}
+
+// ─── Event Impact ──────────────────────────────────────
+
+export function getEventImpact(date: Date, events: LocalEvent[]): number {
+  const dateStr = date.toISOString().slice(0, 10);
+  const dayEvents = events.filter((e) => e.date === dateStr);
+
+  if (dayEvents.length === 0) return 0;
+
   let totalScore = 0;
   for (const evt of dayEvents) {
     const attendance = Math.max(0, evt.estimatedAttendance);
-    const categoryWeight =
-      EVENT_CATEGORY_WEIGHTS[evt.category.toLowerCase()] ??
-      EVENT_CATEGORY_WEIGHTS.other;
-    // Proximity factor: 1.0 for the day itself (could degrade for adjacent days)
-    const proximityFactor = 1.0;
-    totalScore +=
-      Math.log(attendance + 1) * proximityFactor * categoryWeight;
+    const categoryWeight = EVENT_CATEGORY_WEIGHTS[evt.category.toLowerCase()] ?? EVENT_CATEGORY_WEIGHTS.other;
+    totalScore += Math.log(attendance + 1) * categoryWeight;
   }
 
-  // Normalize: log(10000) ≈ 9.2, so divide by ~9 to get 0–10
-  const normalized = Math.min(10, Math.max(0, Math.round((totalScore / 9) * 10) / 10));
-  setCache(cacheKey, normalized);
-  return normalized;
+  return Math.min(10, Math.max(0, Math.round((totalScore / 9) * 10) / 10));
 }
 
-/**
- * Rule-based event fallback (deterministic, no API).
- * Replace with real API call when ready.
- */
-function fetchEventsRuleBased(city: string, date: Date): LocalEvent[] {
-  const dayOfWeek = date.getDay();
-  const month = date.getMonth();
-  const dayOfMonth = date.getDate();
-  const events: LocalEvent[] = [];
+// ─── Weather Impact (using pre-fetched data) ───────────
 
-  // Weekend concert (Fri/Sat) in summer months
-  if ((dayOfWeek === 5 || dayOfWeek === 6) && month >= 5 && month <= 8) {
-    events.push({
-      name: `${city} Summer Music Night`,
-      category: "concert",
-      estimatedAttendance: 3000,
-      date: date.toISOString().slice(0, 10),
-    });
-  }
+export function getWeatherImpact(date: Date, weatherData: WeatherData[]): number {
+  if (weatherData.length === 0) return 0;
 
-  // Monthly trade fair (15th of each month)
-  if (dayOfMonth === 15) {
-    events.push({
-      name: `${city} Trade Expo`,
-      category: "trade_fair",
-      estimatedAttendance: 5000,
-      date: date.toISOString().slice(0, 10),
-    });
-  }
+  // Use index based on day offset from today
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dayOffset = Math.floor((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-  // Quarterly conference (1st of Jan/Apr/Jul/Oct)
-  if (dayOfMonth === 1 && [0, 3, 6, 9].includes(month)) {
-    events.push({
-      name: `${city} Quarterly Tech Conference`,
-      category: "conference",
-      estimatedAttendance: 8000,
-      date: date.toISOString().slice(0, 10),
-    });
-  }
-
-  return events;
-}
-
-// ─── Weather Impact ────────────────────────────────────
-
-export interface WeatherData {
-  temperature: number; // Celsius
-  rainProbability: number; // 0–1
-  severeWeather: boolean;
-}
-
-/**
- * Compute weather impact on demand.
- *
- * Rules:
- *   Severe weather → -5
- *   Heavy rain + weekend → -3
- *   Ideal temp (18–28°C) + weekend → +2
- *   Light rain → -1
- *
- * Returns -5 to +5 scale.
- *
- * Currently uses a deterministic rule-based model.
- * Replace fetchWeather() with OpenWeather API when ready.
- */
-export function getWeatherImpact(city: string, date: Date): number {
-  const cacheKey = `weather:${city}:${date.toISOString().slice(0, 10)}`;
-  const cached = getCached<number>(cacheKey);
-  if (cached !== null) return cached;
-
-  const weather = fetchWeatherRuleBased(city, date);
-  let impact = 0;
-
-  if (weather.severeWeather) {
-    impact = -5;
-  } else {
-    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-
-    if (weather.rainProbability > 0.7 && isWeekend) {
-      impact = -3;
-    } else if (weather.rainProbability > 0.5) {
-      impact = -1;
-    }
-
-    if (
-      weather.temperature >= 18 &&
-      weather.temperature <= 28 &&
-      isWeekend &&
-      weather.rainProbability < 0.3
-    ) {
-      impact = Math.max(impact, 2);
-    }
-  }
-
-  impact = Math.max(-5, Math.min(5, impact));
-  setCache(cacheKey, impact);
-  return impact;
-}
-
-/**
- * Rule-based weather fallback (deterministic).
- * Replace with real OpenWeather API call when ready.
- */
-function fetchWeatherRuleBased(_city: string, date: Date): WeatherData {
-  const month = date.getMonth();
-  const dayOfMonth = date.getDate();
-
-  // Deterministic temperature based on month (seasonal curve)
-  const baseTemps: Record<number, number> = {
-    0: 2, 1: 4, 2: 10, 3: 15, 4: 20, 5: 25,
-    6: 30, 7: 29, 8: 24, 9: 17, 10: 9, 11: 4,
-  };
-  const temperature = baseTemps[month] + (dayOfMonth % 5) - 2;
-
-  // Rain probability: higher in spring/autumn
-  const rainBase: Record<number, number> = {
-    0: 0.3, 1: 0.3, 2: 0.4, 3: 0.5, 4: 0.4, 5: 0.2,
-    6: 0.1, 7: 0.1, 8: 0.3, 9: 0.5, 10: 0.5, 11: 0.4,
-  };
-  const rainProbability = Math.min(1, rainBase[month] + ((dayOfMonth % 7) * 0.05));
-
-  // Severe weather: rare, deterministic trigger
-  const severeWeather = month >= 11 && dayOfMonth % 13 === 0;
-
-  return { temperature, rainProbability, severeWeather };
+  const weather = weatherData[Math.min(dayOffset, weatherData.length - 1)];
+  return computeWeatherImpact(weather, date);
 }
 
 // ─── Competitor Impact ─────────────────────────────────
 
-export interface CompetitorRate {
-  competitor_name: string;
-  price: number;
-}
-
-/**
- * Compute competitor market position impact.
- *
- * If hotel price < market avg → positive demand effect
- * If hotel price > market avg → negative demand effect
- *
- * Returns -5 to +5 scale.
- */
-export function getCompetitorImpact(
-  hotelPrice: number,
-  competitorRates: CompetitorRate[]
-): number {
+export function getCompetitorImpact(hotelPrice: number, competitorRates: CompetitorRate[]): number {
   if (competitorRates.length === 0) return 0;
 
-  const marketAvg =
-    competitorRates.reduce((s, c) => s + c.price, 0) / competitorRates.length;
-
+  const marketAvg = competitorRates.reduce((s, c) => s + c.price, 0) / competitorRates.length;
   if (marketAvg === 0) return 0;
 
-  // Percentage difference: positive means hotel is cheaper
   const diff = (marketAvg - hotelPrice) / marketAvg;
-
-  // Scale: ±20% price diff → ±5 score
   const score = Math.round(diff * 25 * 10) / 10;
   return Math.max(-5, Math.min(5, score));
 }
 
 // ─── Combined External Signal Score ────────────────────
 
-export interface ExternalSignalResult {
-  eventImpact: number;      // 0–10
-  weatherImpact: number;    // -5 to +5
-  competitorImpact: number; // -5 to +5
-  totalScore: number;       // 0–20 (clamped)
-}
-
-/**
- * Compute the combined External Signal Score (0–20).
- *
- * totalScore = eventImpact + (weatherImpact + 5) + (competitorImpact + 5)
- *
- * Weather & competitor are shifted from [-5,+5] to [0,10] so the
- * total range is 0–30, then clamped to 0–20.
- */
 export function getExternalSignalScore(
-  city: string,
   date: Date,
   hotelPrice: number,
   competitorRates: CompetitorRate[],
-  events?: LocalEvent[]
+  weatherData: WeatherData[],
+  events: LocalEvent[]
 ): ExternalSignalResult {
-  const eventImpact = getEventImpact(city, date, events);
-  const weatherImpact = getWeatherImpact(city, date);
+  const eventImpact = getEventImpact(date, events);
+  const weatherImpact = getWeatherImpact(date, weatherData);
   const competitorImpact = getCompetitorImpact(hotelPrice, competitorRates);
 
-  // Shift weather and competitor from [-5,+5] to [0,10]
   const weatherShifted = weatherImpact + 5;
   const competitorShifted = competitorImpact + 5;
 
   const raw = eventImpact + weatherShifted + competitorShifted;
   const totalScore = Math.max(0, Math.min(20, Math.round(raw * 10) / 10));
 
-  return { eventImpact, weatherImpact, competitorImpact, totalScore };
+  return {
+    eventImpact,
+    weatherImpact,
+    competitorImpact,
+    totalScore,
+    weatherAvailable: weatherData.length > 0,
+    eventsAvailable: events.length > 0,
+  };
+}
+
+// ─── API Status Check ──────────────────────────────────
+
+export async function checkApiStatus(): Promise<ApiStatus> {
+  const results: ApiStatus = {
+    weather: "unconfigured",
+    events: "unconfigured",
+    competitor: "connected",
+  };
+
+  try {
+    const { data: wData, error: wErr } = await supabase.functions.invoke("weather", {
+      body: { city: "London" },
+    });
+    if (wErr) {
+      results.weather = "error";
+    } else if (wData?.error?.includes("not configured")) {
+      results.weather = "unconfigured";
+    } else {
+      results.weather = "connected";
+    }
+  } catch {
+    results.weather = "error";
+  }
+
+  try {
+    const { data: eData, error: eErr } = await supabase.functions.invoke("events", {
+      body: { city: "London" },
+    });
+    if (eErr) {
+      results.events = "error";
+    } else if (eData?.error?.includes("not configured")) {
+      results.events = "unconfigured";
+    } else {
+      results.events = "connected";
+    }
+  } catch {
+    results.events = "error";
+  }
+
+  return results;
 }

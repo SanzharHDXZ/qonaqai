@@ -13,22 +13,22 @@ import {
   simulateRevenue,
   getExternalSignalScore,
 } from "@/pricing-engine";
-import type { CompetitorRate } from "@/pricing-engine";
+import type { CompetitorRate, WeatherData, LocalEvent } from "@/pricing-engine";
 
 const today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
 
-// ─── Hotel Profile ─────────────────────────────────────
+// ─── Hotel Profile (fallback only for unauthenticated/demo) ─
 
 export const hotelProfile = {
-  name: "The Riverside Hotel",
+  name: "Demo Hotel",
   rooms: 85,
-  city: "Barcelona",
+  city: "",
   avgOccupancy: 0.72,
   basePrice: 120,
   currency: "€",
 };
 
-// ─── Competitor Data ───────────────────────────────────
+// ─── Competitor Data (kept for type compatibility) ─────
 
 export interface Competitor {
   name: string;
@@ -37,11 +37,7 @@ export interface Competitor {
   rating: number;
 }
 
-export const competitors: Competitor[] = [
-  { name: "Grand Plaza Hotel", avgPrice: 142, occupancy: 71, rating: 4.3 },
-  { name: "City Center Inn", avgPrice: 98, occupancy: 82, rating: 4.0 },
-  { name: "Harbor View Suites", avgPrice: 165, occupancy: 64, rating: 4.6 },
-];
+export const competitors: Competitor[] = [];
 
 // ─── Daily Forecast ────────────────────────────────────
 
@@ -61,18 +57,17 @@ export interface DailyForecast {
   priceMultiplier: number;
   isSaturated: boolean;
   saturationBoost: number;
-  // Demand breakdown
   seasonalityFactor: number;
   weekdayFactor: number;
   eventMultiplier: number;
   trendFactor: number;
   bookingPaceVelocity: number;
-  // External market signals
   externalSignalScore: number;
   externalEventImpact: number;
   externalWeatherImpact: number;
   externalCompetitorImpact: number;
-  // Demand component scores
+  weatherAvailable: boolean;
+  eventsAvailable: boolean;
   demandComponents: {
     weekdayAvgScore: number;
     trendScore: number;
@@ -80,7 +75,6 @@ export interface DailyForecast {
     eventScore: number;
     bookingPaceScore: number;
   };
-  // Confidence breakdown
   dataCompleteness: number;
   eventSignalStrength: number;
   trendConsistency: number;
@@ -91,6 +85,7 @@ export interface DailyForecast {
 
 /**
  * Generate 30-day forecasts using the advanced pricing engine.
+ * Now accepts pre-fetched weather and event data (real API data).
  */
 export function generateForecasts(
   totalRooms: number = hotelProfile.rooms,
@@ -104,15 +99,17 @@ export function generateForecasts(
     rolling30DaySeasonality?: number;
     weekdayBookingPace?: Record<number, number>;
   },
-  city: string = hotelProfile.city,
-  competitorRates: CompetitorRate[] = []
+  city: string = "",
+  competitorRates: CompetitorRate[] = [],
+  weatherData: WeatherData[] = [],
+  events: LocalEvent[] = []
 ): DailyForecast[] {
   return Array.from({ length: 30 }, (_, dayOffset) => {
     const date = addDays(today, dayOffset);
     const dow = date.getDay();
 
-    // External market signals
-    const externalSignals = getExternalSignalScore(city, date, basePrice, competitorRates);
+    // External market signals (using pre-fetched real data)
+    const externalSignals = getExternalSignalScore(date, basePrice, competitorRates, weatherData, events);
 
     // 1. Demand Model (weighted) with external signal
     const demand = calculateDemandScore(date, dayOffset, {
@@ -176,6 +173,8 @@ export function generateForecasts(
       externalEventImpact: externalSignals.eventImpact,
       externalWeatherImpact: externalSignals.weatherImpact,
       externalCompetitorImpact: externalSignals.competitorImpact,
+      weatherAvailable: externalSignals.weatherAvailable,
+      eventsAvailable: externalSignals.eventsAvailable,
       demandComponents: demand.components,
       dataCompleteness: conf.dataCompleteness,
       eventSignalStrength: conf.eventSignalStrength,

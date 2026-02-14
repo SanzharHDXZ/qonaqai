@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, Building2, ArrowRight } from "lucide-react";
+import { BarChart3, Building2, ArrowRight, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,30 +8,87 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
+interface CitySuggestion {
+  name: string;
+  country: string;
+  state: string | null;
+  label: string;
+}
+
 export default function Onboarding() {
   const [orgName, setOrgName] = useState("");
   const [hotelName, setHotelName] = useState("");
-  const [city, setCity] = useState("Barcelona");
+  const [city, setCity] = useState("");
+  const [cityQuery, setCityQuery] = useState("");
+  const [citySuggestions, setCitySuggestions] = useState<CitySuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [rooms, setRooms] = useState("85");
   const [basePrice, setBasePrice] = useState("120");
   const [submitting, setSubmitting] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(false);
   const { refreshMemberships } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const fetchCitySuggestions = useCallback(async (query: string) => {
+    if (query.length < 2) {
+      setCitySuggestions([]);
+      return;
+    }
+    setLoadingCities(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("geocode", {
+        body: { query },
+      });
+      if (!error && data?.suggestions) {
+        setCitySuggestions(data.suggestions);
+        setShowSuggestions(true);
+      }
+    } catch (err) {
+      console.warn("City autocomplete failed:", err);
+    } finally {
+      setLoadingCities(false);
+    }
+  }, []);
+
+  const handleCityInput = (value: string) => {
+    setCityQuery(value);
+    setCity(""); // Clear selected city when typing
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchCitySuggestions(value), 300);
+  };
+
+  const selectCity = (suggestion: CitySuggestion) => {
+    setCity(suggestion.name);
+    setCityQuery(suggestion.label);
+    setShowSuggestions(false);
+    setCitySuggestions([]);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!orgName.trim() || !hotelName.trim()) return;
+    if (!orgName.trim() || !hotelName.trim() || !city.trim()) return;
 
     setSubmitting(true);
     try {
-      // Step 1: Create org + owner membership via security definer
       const { data: orgId, error: orgError } = await supabase.rpc("create_org_and_owner", {
         _org_name: orgName.trim(),
       });
       if (orgError) throw orgError;
 
-      // Step 2: Create hotel via security definer
       const { error: hotelError } = await supabase.rpc("create_hotel_for_org", {
         _org_id: orgId,
         _name: hotelName.trim(),
@@ -41,7 +98,6 @@ export default function Onboarding() {
       });
       if (hotelError) throw hotelError;
 
-      // Refresh membership data in context
       await refreshMemberships();
 
       toast({ title: "Welcome to RevPilot!", description: `${orgName} and ${hotelName} created.` });
@@ -87,9 +143,39 @@ export default function Onboarding() {
               <Input id="hotelName" value={hotelName} onChange={(e) => setHotelName(e.target.value)} placeholder="Grand Hotel Barcelona" required />
             </div>
             <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2">
+              <div className="space-y-2 relative col-span-1" ref={suggestionsRef}>
                 <Label htmlFor="city">City</Label>
-                <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} />
+                <div className="relative">
+                  <Input
+                    id="city"
+                    value={cityQuery}
+                    onChange={(e) => handleCityInput(e.target.value)}
+                    onFocus={() => citySuggestions.length > 0 && setShowSuggestions(true)}
+                    placeholder="Search city…"
+                    required
+                    autoComplete="off"
+                  />
+                  {loadingCities && (
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    </div>
+                  )}
+                </div>
+                {showSuggestions && citySuggestions.length > 0 && (
+                  <div className="absolute z-50 top-full mt-1 w-full max-w-[280px] rounded-lg border border-border bg-card shadow-lg overflow-hidden">
+                    {citySuggestions.map((s, i) => (
+                      <button
+                        key={`${s.name}-${s.country}-${i}`}
+                        type="button"
+                        onClick={() => selectCity(s)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
+                      >
+                        <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="truncate">{s.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="rooms">Rooms</Label>
@@ -102,7 +188,7 @@ export default function Onboarding() {
             </div>
           </div>
 
-          <Button type="submit" className="w-full" disabled={submitting}>
+          <Button type="submit" className="w-full" disabled={submitting || !city}>
             {submitting ? "Setting up…" : "Launch RevPilot"} <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </form>

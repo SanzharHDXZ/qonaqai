@@ -1,1 +1,10 @@
 project_id = "urwcbvaumkeorhtkjgdp"
+
+[functions.weather]
+verify_jwt = false
+
+[functions.events]
+verify_jwt = false
+
+[functions.geocode]
+verify_jwt = false

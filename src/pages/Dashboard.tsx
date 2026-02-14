@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import {
   BarChart3, TrendingUp, Percent, DollarSign, AlertTriangle, Building2,
   SlidersHorizontal, ArrowUpRight, ArrowDownRight, Bell, Calendar, Zap,
-  ChevronLeft, Settings, Info, Database, FlaskConical, Target,
+  ChevronLeft, Settings, Info, Database, FlaskConical, Target, AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -13,8 +13,8 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 import { generateForecasts, generateAlerts, computeKPIs, competitors, type DailyForecast, type Alert } from "@/data/mockData";
-import { simulateRevenue, runBacktest, computeHistoricalStats, calculateForecastAccuracy, buildForecastRecords } from "@/pricing-engine";
-import type { CompetitorRate } from "@/pricing-engine";
+import { simulateRevenue, runBacktest, computeHistoricalStats, calculateForecastAccuracy, buildForecastRecords, fetchWeatherData, fetchEventData } from "@/pricing-engine";
+import type { CompetitorRate, WeatherData, LocalEvent } from "@/pricing-engine";
 import ExplainPrice from "@/components/ExplainPrice";
 import UserMenu from "@/components/UserMenu";
 import HotelSwitcher from "@/components/HotelSwitcher";
@@ -103,6 +103,11 @@ export default function Dashboard() {
 
   // Fetch competitor rates for active hotel
   const [competitorRates, setCompetitorRates] = useState<CompetitorRate[]>([]);
+  // Real API data
+  const [weatherData, setWeatherData] = useState<WeatherData[]>([]);
+  const [eventData, setEventData] = useState<LocalEvent[]>([]);
+  const [apiWarnings, setApiWarnings] = useState<string[]>([]);
+
   useEffect(() => {
     if (!activeHotel?.id) return;
     import("@/integrations/supabase/client").then(({ supabase }) => {
@@ -115,6 +120,24 @@ export default function Dashboard() {
         });
     });
   }, [activeHotel?.id]);
+
+  // Fetch real weather and event data
+  useEffect(() => {
+    if (!activeHotel?.city) return;
+    const city = activeHotel.city;
+    const warnings: string[] = [];
+
+    Promise.all([
+      fetchWeatherData(city).then((result) => {
+        setWeatherData(result.data);
+        if (!result.available) warnings.push("Weather data unavailable");
+      }),
+      fetchEventData(city).then((result) => {
+        setEventData(result.data);
+        if (!result.available) warnings.push("Events data unavailable");
+      }),
+    ]).then(() => setApiWarnings(warnings));
+  }, [activeHotel?.city]);
 
   // Derive hotel profile from active hotel (real DB data)
   const hotel = useMemo(() => {
@@ -144,8 +167,10 @@ export default function Dashboard() {
       weekdayBookingPace: historicalStats.weekdayBookingPace,
     } : undefined,
     hotel.city,
-    competitorRates
-  ), [hotel, historicalStats, competitorRates]);
+    competitorRates,
+    weatherData,
+    eventData
+  ), [hotel, historicalStats, competitorRates, weatherData, eventData]);
 
   const kpiData = useMemo(() => computeKPIs(forecasts), [forecasts]);
   const alerts = useMemo(() => generateAlerts(forecasts), [forecasts]);
@@ -245,6 +270,14 @@ export default function Dashboard() {
       </header>
 
       <main className="container mx-auto px-6 py-6 space-y-6">
+        {/* API Data Warnings */}
+        {apiWarnings.length > 0 && (
+          <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{apiWarnings.join(" · ")} — external signal impact set to 0</span>
+          </div>
+        )}
+
         {/* Welcome + Data Status */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>

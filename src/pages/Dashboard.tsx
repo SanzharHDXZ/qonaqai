@@ -12,7 +12,8 @@ import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
 } from "recharts";
-import { generateForecasts, competitors, alerts, hotelProfile, kpiData, type DailyForecast } from "@/data/mockData";
+import { generateForecasts, generateAlerts, computeKPIs, competitors, hotelProfile, type DailyForecast, type Alert } from "@/data/mockData";
+import { simulateRevenue } from "@/pricing-engine";
 
 // ─── KPI Card ──────────────────────────────────────────
 function KPICard({ title, value, sub, icon: Icon, trend }: {
@@ -43,7 +44,7 @@ function KPICard({ title, value, sub, icon: Icon, trend }: {
 }
 
 // ─── Alert Item ────────────────────────────────────────
-function AlertItem({ alert }: { alert: typeof alerts[0] }) {
+function AlertItem({ alert }: { alert: Alert }) {
   const iconMap = { surge: TrendingUp, event: Calendar, risk: AlertTriangle };
   const colorMap = { surge: "text-primary", event: "text-warning", risk: "text-destructive" };
   const Icon = iconMap[alert.type];
@@ -89,19 +90,20 @@ function ConfidenceGauge({ value }: { value: number }) {
 
 // ─── Main Dashboard ────────────────────────────────────
 export default function Dashboard() {
-  const forecasts = useMemo(() => generateForecasts(hotelProfile.rooms, hotelProfile.basePrice), []);
+  const forecasts = useMemo(() => generateForecasts(hotelProfile.rooms, hotelProfile.basePrice, hotelProfile.avgOccupancy), []);
+  const kpiData = useMemo(() => computeKPIs(forecasts), [forecasts]);
+  const alerts = useMemo(() => generateAlerts(forecasts), [forecasts]);
   const [selectedDay, setSelectedDay] = useState<DailyForecast>(forecasts[0]);
   const [manualPrice, setManualPrice] = useState(selectedDay.recommendedPrice);
 
-  const simulatedOccupancy = useMemo(() => {
-    const priceDiff = manualPrice - selectedDay.recommendedPrice;
-    const elasticity = -0.3;
-    const change = (priceDiff / selectedDay.recommendedPrice) * elasticity * 100;
-    return Math.max(20, Math.min(99, selectedDay.predictedOccupancy + Math.round(change)));
-  }, [manualPrice, selectedDay]);
-
-  const simulatedRevenue = Math.round((simulatedOccupancy / 100) * hotelProfile.rooms * manualPrice);
-  const aiRevenue = Math.round((selectedDay.predictedOccupancy / 100) * hotelProfile.rooms * selectedDay.recommendedPrice);
+  // Real revenue simulation using the pricing engine
+  const simulation = useMemo(() => simulateRevenue({
+    totalRooms: hotelProfile.rooms,
+    predictedOccupancy: selectedDay.predictedOccupancy,
+    recommendedPrice: selectedDay.recommendedPrice,
+    staticPrice: selectedDay.staticPrice,
+    manualPrice,
+  }), [manualPrice, selectedDay]);
 
   const chartData = forecasts.map((f) => ({
     name: f.dayLabel,
@@ -152,15 +154,15 @@ export default function Dashboard() {
             title="Avg. Predicted Occupancy"
             value={`${kpiData.avgOccupancy}%`}
             icon={Percent}
-            trend={{ value: "+4.2%", positive: true }}
-            sub="vs last month"
+            trend={{ value: `+€${kpiData.avgRecommendedPrice - hotelProfile.basePrice}`, positive: kpiData.avgRecommendedPrice > hotelProfile.basePrice }}
+            sub="vs static pricing"
           />
           <KPICard
             title="Avg. Recommended Price"
             value={`€${kpiData.avgRecommendedPrice}`}
             icon={DollarSign}
-            trend={{ value: "+€28", positive: true }}
-            sub="vs static pricing"
+            trend={{ value: `+€${kpiData.avgRecommendedPrice - hotelProfile.basePrice}`, positive: true }}
+            sub={`above base €${hotelProfile.basePrice}`}
           />
           <KPICard
             title="AI Confidence Score"
@@ -298,12 +300,25 @@ export default function Dashboard() {
               </div>
               <div className="mt-6 space-y-3">
                 <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Data completeness</span>
+                  <span className="font-medium">{Math.round(selectedDay.dataCompleteness * 100)}%</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Event signal</span>
+                  <span className="font-medium">{Math.round(selectedDay.eventSignalStrength * 100)}%</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Trend consistency</span>
+                  <span className="font-medium">{Math.round(selectedDay.trendConsistency * 100)}%</span>
+                </div>
+                <div className="border-t border-border my-2" />
+                <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Underpricing risk</span>
-                  <span className="font-medium text-warning">{selectedDay.predictedOccupancy > 75 ? "High" : "Low"}</span>
+                  <span className={`font-medium ${selectedDay.predictedOccupancy > 75 ? "text-warning" : "text-success"}`}>{selectedDay.predictedOccupancy > 75 ? "High" : "Low"}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Overpricing risk</span>
-                  <span className="font-medium text-success">{selectedDay.predictedOccupancy < 60 ? "High" : "Low"}</span>
+                  <span className={`font-medium ${selectedDay.predictedOccupancy < 60 ? "text-destructive" : "text-success"}`}>{selectedDay.predictedOccupancy < 60 ? "High" : "Low"}</span>
                 </div>
               </div>
             </div>
@@ -351,19 +366,36 @@ export default function Dashboard() {
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-lg bg-muted p-3 text-center">
                   <div className="text-xs text-muted-foreground">Occupancy</div>
-                  <div className="text-lg font-bold">{simulatedOccupancy}%</div>
+                  <div className="text-lg font-bold">{simulation.manualOccupancy}%</div>
                 </div>
                 <div className="rounded-lg bg-muted p-3 text-center">
                   <div className="text-xs text-muted-foreground">Revenue</div>
-                  <div className="text-lg font-bold">€{simulatedRevenue.toLocaleString()}</div>
+                  <div className="text-lg font-bold">€{simulation.manualRevenue.toLocaleString()}</div>
                 </div>
                 <div className="rounded-lg bg-muted p-3 text-center">
                   <div className="text-xs text-muted-foreground">vs AI</div>
-                  <div className={`text-lg font-bold ${simulatedRevenue >= aiRevenue ? "text-success" : "text-destructive"}`}>
-                    {simulatedRevenue >= aiRevenue ? "+" : ""}€{(simulatedRevenue - aiRevenue).toLocaleString()}
+                  <div className={`text-lg font-bold ${simulation.revenueVsAI >= 0 ? "text-success" : "text-destructive"}`}>
+                    {simulation.revenueVsAI >= 0 ? "+" : ""}€{simulation.revenueVsAI.toLocaleString()}
                   </div>
                 </div>
               </div>
+              {/* Risk breakdown */}
+              {(simulation.underpricingLoss > 0 || simulation.overpricingLoss > 0) && (
+                <div className="rounded-lg border border-border p-3 space-y-2">
+                  {simulation.underpricingLoss > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-warning">Underpricing loss</span>
+                      <span className="font-medium text-warning">-€{simulation.underpricingLoss.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {simulation.overpricingLoss > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-destructive">Overpricing loss</span>
+                      <span className="font-medium text-destructive">-€{simulation.overpricingLoss.toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

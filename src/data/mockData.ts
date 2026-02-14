@@ -1,9 +1,8 @@
 /**
- * Data Layer – Powered by Pricing Engine
+ * Data Layer – Powered by Advanced Pricing Engine
  * 
  * All values are computed deterministically from the pricing engine.
- * No random values. No hardcoded demo data.
- * Given the same hotel profile → same outputs every time.
+ * Uses weighted demand model, non-linear elasticity, and saturation cap.
  */
 
 import { addDays, format } from "date-fns";
@@ -16,18 +15,18 @@ import {
 
 const today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
 
-// ─── Hotel Profile (would come from onboarding / database) ─────
+// ─── Hotel Profile ─────────────────────────────────────
 
 export const hotelProfile = {
   name: "The Riverside Hotel",
   rooms: 85,
   city: "Barcelona",
-  avgOccupancy: 0.72,   // 72% historical average
+  avgOccupancy: 0.72,
   basePrice: 120,
   currency: "€",
 };
 
-// ─── Competitor Data (would come from API in production) ────────
+// ─── Competitor Data ───────────────────────────────────
 
 export interface Competitor {
   name: string;
@@ -42,7 +41,7 @@ export const competitors: Competitor[] = [
   { name: "Harbor View Suites", avgPrice: 165, occupancy: 64, rating: 4.6 },
 ];
 
-// ─── Daily Forecast (computed by engine) ────────────────────────
+// ─── Daily Forecast ────────────────────────────────────
 
 export interface DailyForecast {
   date: string;
@@ -58,51 +57,85 @@ export interface DailyForecast {
   staticRevenue: number;
   pricingTier: string;
   priceMultiplier: number;
+  isSaturated: boolean;
+  saturationBoost: number;
   // Demand breakdown
   seasonalityFactor: number;
   weekdayFactor: number;
   eventMultiplier: number;
   trendFactor: number;
+  bookingPaceVelocity: number;
+  // Demand component scores
+  demandComponents: {
+    weekdayAvgScore: number;
+    trendScore: number;
+    seasonalityScore: number;
+    eventScore: number;
+    bookingPaceScore: number;
+  };
   // Confidence breakdown
   dataCompleteness: number;
   eventSignalStrength: number;
   trendConsistency: number;
+  dataVolumeScore: number;
+  volatilityScore: number;
   event?: string;
 }
 
 /**
- * Generate 30-day forecasts using the pricing engine.
- * Fully deterministic – same date + same profile = same results.
+ * Generate 30-day forecasts using the advanced pricing engine.
  */
 export function generateForecasts(
   totalRooms: number = hotelProfile.rooms,
   basePrice: number = hotelProfile.basePrice,
-  baseOccupancy: number = hotelProfile.avgOccupancy
+  baseOccupancy: number = hotelProfile.avgOccupancy,
+  histStats?: { 
+    dataPointCount?: number; 
+    occupancyVolatility?: number;
+    weekdayAvgOccupancy?: Record<number, number>;
+    rolling7DayTrend?: number;
+    rolling30DaySeasonality?: number;
+    weekdayBookingPace?: Record<number, number>;
+  }
 ): DailyForecast[] {
   return Array.from({ length: 30 }, (_, dayOffset) => {
     const date = addDays(today, dayOffset);
+    const dow = date.getDay();
 
-    // 1. Demand Model
-    const demand = calculateDemandScore(date, dayOffset, { baseOccupancy });
+    // 1. Demand Model (weighted)
+    const demand = calculateDemandScore(date, dayOffset, {
+      baseOccupancy,
+      historicalWeekdayAvg: histStats?.weekdayAvgOccupancy?.[dow],
+      historicalTrend7Day: histStats?.rolling7DayTrend,
+      historicalSeasonality30Day: histStats?.rolling30DaySeasonality,
+      bookingPaceVelocity: histStats?.weekdayBookingPace?.[dow],
+    });
 
-    // 2. Price Optimizer
-    const pricing = calculatePrice(demand.demandScore, { basePrice });
+    // 2. Price Optimizer (with saturation cap)
+    const pricing = calculatePrice(demand.demandScore, {
+      basePrice,
+      projectedOccupancy: demand.demandScore,
+    });
 
-    // 3. Confidence Model
+    // 3. Confidence Model (with data volume & volatility)
     const conf = calculateConfidence(
       dayOffset,
       !!demand.event,
       demand.eventMultiplier,
-      demand.trendFactor
+      demand.trendFactor,
+      {
+        dataPointCount: histStats?.dataPointCount ?? 0,
+        occupancyVolatility: histStats?.occupancyVolatility,
+      }
     );
 
-    // 4. Revenue calculation (AI vs static)
+    // 4. Revenue simulation
     const sim = simulateRevenue({
       totalRooms,
       predictedOccupancy: demand.demandScore,
       recommendedPrice: pricing.recommendedPrice,
       staticPrice: basePrice,
-      manualPrice: pricing.recommendedPrice, // at recommended price
+      manualPrice: pricing.recommendedPrice,
     });
 
     return {
@@ -119,19 +152,25 @@ export function generateForecasts(
       staticRevenue: sim.staticRevenue,
       pricingTier: pricing.pricingTier,
       priceMultiplier: pricing.priceMultiplier,
+      isSaturated: pricing.isSaturated,
+      saturationBoost: pricing.saturationBoost,
       seasonalityFactor: demand.seasonalityFactor,
       weekdayFactor: demand.weekdayFactor,
       eventMultiplier: demand.eventMultiplier,
       trendFactor: demand.trendFactor,
+      bookingPaceVelocity: demand.bookingPaceVelocity,
+      demandComponents: demand.components,
       dataCompleteness: conf.dataCompleteness,
       eventSignalStrength: conf.eventSignalStrength,
       trendConsistency: conf.trendConsistency,
+      dataVolumeScore: conf.dataVolumeScore,
+      volatilityScore: conf.volatilityScore,
       event: demand.event,
     };
   });
 }
 
-// ─── Alerts (derived from forecast data) ────────────────────────
+// ─── Alerts ────────────────────────────────────────────
 
 export interface Alert {
   id: string;
@@ -142,16 +181,21 @@ export interface Alert {
   impact: string;
 }
 
-/**
- * Generate alerts from forecast data. No hardcoded alerts.
- */
 export function generateAlerts(forecasts: DailyForecast[]): Alert[] {
   const alerts: Alert[] = [];
   let id = 0;
 
   for (const f of forecasts) {
-    // Surge alert: demand > 85
-    if (f.demandScore > 85 && f.event) {
+    if (f.isSaturated) {
+      alerts.push({
+        id: String(++id),
+        type: "surge",
+        title: `Demand saturation: profit-maximizing mode`,
+        description: `Occupancy at ${f.demandScore}% on ${f.dayLabel}. Switched to profit-maximizing pricing at €${f.recommendedPrice} (+${Math.round(f.saturationBoost * 100)}% saturation boost).`,
+        date: f.dayLabel,
+        impact: `Saturation mode active`,
+      });
+    } else if (f.demandScore > 85 && f.event) {
       alerts.push({
         id: String(++id),
         type: "surge",
@@ -162,7 +206,6 @@ export function generateAlerts(forecasts: DailyForecast[]): Alert[] {
       });
     }
 
-    // Event alert: has event but not surge-level
     if (f.event && f.demandScore <= 85 && f.demandScore > 70) {
       alerts.push({
         id: String(++id),
@@ -174,24 +217,22 @@ export function generateAlerts(forecasts: DailyForecast[]): Alert[] {
       });
     }
 
-    // Risk alert: demand < 55
     if (f.demandScore < 55) {
       alerts.push({
         id: String(++id),
         type: "risk",
         title: `Low occupancy risk on ${f.dayLabel}`,
-        description: `Demand score of ${f.demandScore} is below target. Consider promotional pricing at €${f.minPrice} to maintain occupancy.`,
+        description: `Demand score of ${f.demandScore} is below target. Consider promotional pricing at €${f.minPrice}.`,
         date: f.dayLabel,
         impact: `${f.demandScore - 65}% below target`,
       });
     }
   }
 
-  // Return top 5 most relevant alerts
   return alerts.slice(0, 5);
 }
 
-// ─── KPI Summary (computed from forecasts) ──────────────────────
+// ─── KPI Summary ───────────────────────────────────────
 
 export interface KPIData {
   avgOccupancy: number;

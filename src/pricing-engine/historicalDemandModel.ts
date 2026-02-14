@@ -6,6 +6,8 @@
  * - Rolling 7-day trend
  * - Rolling 30-day seasonality index
  * - Recent momentum (last 14 days)
+ * - Occupancy volatility (std dev over last 30 days)
+ * - Booking pace velocity per weekday
  * 
  * When historical data is available, demand scores are based on real data.
  * Falls back to rule-based model when no data exists.
@@ -29,9 +31,23 @@ export interface HistoricalDemandStats {
   recentMomentum14Day: number; // multiplier
   avgADR: number;
   totalRevenue: number;
+  /** Std deviation of occupancy over last 30 days (0–1 scale) */
+  occupancyVolatility: number;
+  /** Booking pace velocity per weekday (-1 to +1) */
+  weekdayBookingPace: Record<number, number>;
   // Dynamic marketing metrics
   dataRangeStart: string;
   dataRangeEnd: string;
+}
+
+/**
+ * Compute standard deviation of an array of numbers.
+ */
+function stdDev(values: number[]): number {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((s, v) => s + v, 0) / values.length;
+  const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / (values.length - 1);
+  return Math.sqrt(variance);
 }
 
 /**
@@ -50,6 +66,8 @@ export function computeHistoricalStats(records: HistoricalRecord[]): HistoricalD
       recentMomentum14Day: 1.0,
       avgADR: 0,
       totalRevenue: 0,
+      occupancyVolatility: 0,
+      weekdayBookingPace: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 },
       dataRangeStart: "",
       dataRangeEnd: "",
     };
@@ -58,7 +76,7 @@ export function computeHistoricalStats(records: HistoricalRecord[]): HistoricalD
   const sorted = [...records].sort((a, b) => a.date.localeCompare(b.date));
 
   // Overall average occupancy
-  const occupancies = sorted.map(r => 
+  const occupancies = sorted.map(r =>
     r.rooms_available > 0 ? r.rooms_sold / r.rooms_available : 0
   );
   const avgOccupancy = occupancies.reduce((s, o) => s + o, 0) / occupancies.length;
@@ -106,6 +124,40 @@ export function computeHistoricalStats(records: HistoricalRecord[]): HistoricalD
     recentMomentum14Day = Math.max(0.85, Math.min(1.15, recentMomentum14Day));
   }
 
+  // Occupancy volatility (std dev of last 30 days, on 0–1 scale)
+  const last30Occ = occupancies.slice(-30);
+  const occupancyVolatility = Math.round(stdDev(last30Occ) * 1000) / 1000;
+
+  // Booking pace velocity per weekday
+  // Compare last 2 weeks' weekday occupancy vs previous 2 weeks
+  const weekdayBookingPace: Record<number, number> = {};
+  if (sorted.length >= 28) {
+    const recent14 = sorted.slice(-14);
+    const prev14 = sorted.slice(-28, -14);
+    const recentBuckets: number[][] = [[], [], [], [], [], [], []];
+    const prevBuckets: number[][] = [[], [], [], [], [], [], []];
+    for (const r of recent14) {
+      const dow = new Date(r.date).getDay();
+      recentBuckets[dow].push(r.rooms_available > 0 ? r.rooms_sold / r.rooms_available : 0);
+    }
+    for (const r of prev14) {
+      const dow = new Date(r.date).getDay();
+      prevBuckets[dow].push(r.rooms_available > 0 ? r.rooms_sold / r.rooms_available : 0);
+    }
+    for (let d = 0; d < 7; d++) {
+      const recentAvg = recentBuckets[d].length > 0
+        ? recentBuckets[d].reduce((s, o) => s + o, 0) / recentBuckets[d].length : 0;
+      const prevAvg = prevBuckets[d].length > 0
+        ? prevBuckets[d].reduce((s, o) => s + o, 0) / prevBuckets[d].length : 0;
+      // Velocity: difference normalized to -1..+1
+      weekdayBookingPace[d] = prevAvg > 0
+        ? Math.max(-1, Math.min(1, Math.round(((recentAvg - prevAvg) / prevAvg) * 100) / 100))
+        : 0;
+    }
+  } else {
+    for (let d = 0; d < 7; d++) weekdayBookingPace[d] = 0;
+  }
+
   // ADR and revenue
   const avgADR = sorted.reduce((s, r) => s + r.average_daily_rate, 0) / sorted.length;
   const totalRevenue = sorted.reduce((s, r) => s + r.rooms_sold * r.average_daily_rate, 0);
@@ -122,6 +174,8 @@ export function computeHistoricalStats(records: HistoricalRecord[]): HistoricalD
     recentMomentum14Day: Math.round(recentMomentum14Day * 1000) / 1000,
     avgADR: Math.round(avgADR * 100) / 100,
     totalRevenue: Math.round(totalRevenue),
+    occupancyVolatility,
+    weekdayBookingPace,
     dataRangeStart: dates[0],
     dataRangeEnd: dates[dates.length - 1],
   };
@@ -129,7 +183,6 @@ export function computeHistoricalStats(records: HistoricalRecord[]): HistoricalD
 
 /**
  * Get historical data from localStorage (pilot mode).
- * Will be replaced with database query when auth is added.
  */
 export function getStoredHistoricalData(): HistoricalRecord[] {
   try {

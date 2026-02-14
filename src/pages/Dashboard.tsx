@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import {
   BarChart3, TrendingUp, Percent, DollarSign, AlertTriangle, Building2,
   SlidersHorizontal, ArrowUpRight, ArrowDownRight, Bell, Calendar, Zap,
-  ChevronLeft, Settings, LogOut, Info, Database, FlaskConical,
+  ChevronLeft, Settings, LogOut, Info, Database, FlaskConical, Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -13,7 +13,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 import { generateForecasts, generateAlerts, computeKPIs, competitors, hotelProfile, type DailyForecast, type Alert } from "@/data/mockData";
-import { simulateRevenue, runBacktest, getStoredHistoricalData, computeHistoricalStats } from "@/pricing-engine";
+import { simulateRevenue, runBacktest, getStoredHistoricalData, computeHistoricalStats, calculateForecastAccuracy, buildForecastRecords } from "@/pricing-engine";
 import ExplainPrice from "@/components/ExplainPrice";
 
 // ─── KPI Card ──────────────────────────────────────────
@@ -94,7 +94,20 @@ export default function Dashboard() {
   const historicalData = useMemo(() => getStoredHistoricalData(), []);
   const historicalStats = useMemo(() => computeHistoricalStats(historicalData), [historicalData]);
 
-  const forecasts = useMemo(() => generateForecasts(hotelProfile.rooms, hotelProfile.basePrice, hotelProfile.avgOccupancy), []);
+  const forecasts = useMemo(() => generateForecasts(
+    hotelProfile.rooms,
+    hotelProfile.basePrice,
+    hotelProfile.avgOccupancy,
+    historicalStats.hasData ? {
+      dataPointCount: historicalStats.totalRecords,
+      occupancyVolatility: historicalStats.occupancyVolatility,
+      weekdayAvgOccupancy: historicalStats.weekdayAvgOccupancy,
+      rolling7DayTrend: historicalStats.rolling7DayTrend,
+      rolling30DaySeasonality: historicalStats.rolling30DaySeasonality,
+      weekdayBookingPace: historicalStats.weekdayBookingPace,
+    } : undefined
+  ), [historicalStats]);
+
   const kpiData = useMemo(() => computeKPIs(forecasts), [forecasts]);
   const alerts = useMemo(() => generateAlerts(forecasts), [forecasts]);
   const [selectedDay, setSelectedDay] = useState<DailyForecast>(forecasts[0]);
@@ -112,7 +125,18 @@ export default function Dashboard() {
     });
   }, [showBacktest, historicalData]);
 
-  // Real revenue simulation using the pricing engine
+  // Forecast accuracy tracking
+  const forecastAccuracy = useMemo(() => {
+    if (!backtestResult || historicalData.length === 0) return null;
+    const predictions = backtestResult.dailyResults.map(d => ({
+      date: d.date,
+      predictedOccupancy: d.aiProjectedOccupancy,
+    }));
+    const records = buildForecastRecords(historicalData, predictions);
+    return calculateForecastAccuracy(records);
+  }, [backtestResult, historicalData]);
+
+  // Revenue simulation
   const simulation = useMemo(() => simulateRevenue({
     totalRooms: hotelProfile.rooms,
     predictedOccupancy: selectedDay.predictedOccupancy,
@@ -241,6 +265,38 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Forecast Accuracy Panel */}
+            {forecastAccuracy && forecastAccuracy.totalDays > 0 && (
+              <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+                <h4 className="text-xs font-medium flex items-center gap-2">
+                  <Target className="h-3.5 w-3.5 text-primary" /> Forecast Accuracy
+                </h4>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <div className="text-center">
+                    <div className="text-xs text-muted-foreground">Overall Accuracy</div>
+                    <div className={`text-lg font-bold mt-1 ${forecastAccuracy.accuracy >= 85 ? "text-success" : forecastAccuracy.accuracy >= 70 ? "text-warning" : "text-destructive"}`}>
+                      {forecastAccuracy.accuracy}%
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-muted-foreground">MAE</div>
+                    <div className="text-lg font-bold mt-1">{forecastAccuracy.mae} pts</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-muted-foreground">MAPE</div>
+                    <div className="text-lg font-bold mt-1">{forecastAccuracy.mape}%</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-muted-foreground">30-Day Accuracy</div>
+                    <div className={`text-lg font-bold mt-1 ${forecastAccuracy.rolling30.accuracy >= 85 ? "text-success" : forecastAccuracy.rolling30.accuracy >= 70 ? "text-warning" : "text-destructive"}`}>
+                      {forecastAccuracy.rolling30.accuracy}%
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">{forecastAccuracy.rolling30.days} days</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Backtest daily chart */}
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -366,6 +422,7 @@ export default function Dashboard() {
                     <th className="px-4 py-3 text-right font-medium">AI Price</th>
                     <th className="px-4 py-3 text-right font-medium">Range</th>
                     <th className="px-4 py-3 text-right font-medium">Confidence</th>
+                    <th className="px-4 py-3 text-left font-medium">Tier</th>
                     <th className="px-4 py-3 text-left font-medium">Event</th>
                     <th className="px-4 py-3 text-center font-medium">Explain</th>
                   </tr>
@@ -390,6 +447,17 @@ export default function Dashboard() {
                           f.confidence >= 85 ? "bg-success/10 text-success" : f.confidence >= 70 ? "bg-warning/10 text-warning" : "bg-destructive/10 text-destructive"
                         }`}>
                           {f.confidence}%
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                          f.pricingTier === "saturation" ? "bg-primary/20 text-primary" :
+                          f.pricingTier === "surge" ? "bg-destructive/10 text-destructive" :
+                          f.pricingTier === "premium" ? "bg-warning/10 text-warning" :
+                          f.pricingTier === "discount" ? "bg-muted text-muted-foreground" :
+                          "bg-accent text-accent-foreground"
+                        }`}>
+                          {f.isSaturated ? "🔥 " : ""}{f.pricingTier}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{f.event || "—"}</td>
@@ -445,6 +513,14 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Trend consistency</span>
                     <span className="font-medium">{Math.round(selectedDay.trendConsistency * 100)}%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Data volume</span>
+                    <span className="font-medium">{Math.round(selectedDay.dataVolumeScore * 100)}%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Volatility score</span>
+                    <span className="font-medium">{Math.round(selectedDay.volatilityScore * 100)}%</span>
                   </div>
                   <div className="border-t border-border my-2" />
                   <div className="flex items-center justify-between text-xs">
@@ -515,7 +591,6 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
-              {/* Risk breakdown */}
               {(simulation.underpricingLoss > 0 || simulation.overpricingLoss > 0) && (
                 <div className="rounded-lg border border-border p-3 space-y-2">
                   {simulation.underpricingLoss > 0 && (

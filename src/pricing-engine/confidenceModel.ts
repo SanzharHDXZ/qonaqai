@@ -1,20 +1,28 @@
 /**
- * Confidence Score Model
+ * Confidence Score Model with Data Volume & Volatility
  * 
- * Calculates a dynamic Confidence Score (0–100%) per day based on:
- * - Data completeness: how far in the future (closer = more data = higher confidence)
- * - Event signal strength: known events boost confidence in demand direction
- * - Historical stability: stable base occupancy = higher confidence
- * - Trend consistency: consistent trend = higher confidence
+ * Calculates a dynamic Confidence Score (0–100%) based on:
+ * - Data completeness: forecast horizon decay
+ * - Event signal strength
+ * - Historical stability (from data volume)
+ * - Trend consistency
+ * - Data volume score: more historical days = higher confidence
+ * - Volatility score: low occupancy std dev = higher confidence
  * 
- * No static values. All calculations are deterministic.
+ * All calculations are deterministic.
  */
 
 export interface ConfidenceConfig {
-  /** Base occupancy stability (0–1). Higher = more historically stable hotel. Default: 0.75 */
+  /** Base occupancy stability (0–1). Default: 0.75 */
   historicalStability?: number;
   /** Maximum forecast horizon in days. Default: 30 */
   forecastHorizon?: number;
+  /** Number of historical data points available. Default: 0 */
+  dataPointCount?: number;
+  /** Minimum data points for full confidence. Default: 90 */
+  minDataForFullConfidence?: number;
+  /** Standard deviation of occupancy over last 30 days (0–1 scale). Default: undefined */
+  occupancyVolatility?: number;
 }
 
 export interface ConfidenceResult {
@@ -23,48 +31,58 @@ export interface ConfidenceResult {
   eventSignalStrength: number;  // 0–1
   historicalStability: number;  // 0–1
   trendConsistency: number;     // 0–1
+  dataVolumeScore: number;      // 0–1
+  volatilityScore: number;      // 0–1
 }
 
-/**
- * Calculate data completeness – decays with forecast distance.
- * Day 0 (today) = 1.0, Day 30 = ~0.5
- */
 function calcDataCompleteness(dayOffset: number, horizon: number): number {
-  // Exponential decay: closer days have much more reliable data
   return Math.exp(-1.0 * dayOffset / horizon);
 }
 
-/**
- * Calculate event signal strength.
- * If there's a known event, signal is strong (boosting or lowering doesn't matter,
- * the point is we KNOW something is happening).
- */
 function calcEventSignalStrength(hasEvent: boolean, eventMultiplier: number): number {
-  if (!hasEvent) {
-    // No event = moderate signal (baseline behavior is predictable)
-    return 0.60;
-  }
-  // Known event = high signal strength proportional to impact
+  if (!hasEvent) return 0.60;
   return Math.min(1.0, 0.70 + (eventMultiplier - 1.0) * 2.0);
 }
 
-/**
- * Calculate trend consistency from trend factor.
- * Trend factor near 1.0 = very consistent = high score.
- * Large deviations = less consistent.
- */
 function calcTrendConsistency(trendFactor: number): number {
   const deviation = Math.abs(trendFactor - 1.0);
-  // Small deviation = high consistency
   return Math.max(0.3, 1.0 - deviation * 5.0);
 }
 
 /**
- * Calculate the overall confidence score for a forecasted day.
+ * Calculate data volume confidence score.
+ * More historical data points = higher confidence.
+ * Logarithmic scaling: diminishing returns after minimum threshold.
+ */
+function calcDataVolumeScore(dataPoints: number, minForFull: number): number {
+  if (dataPoints === 0) return 0.2; // minimal confidence with no data
+  if (dataPoints >= minForFull) return 1.0;
+  // Logarithmic curve: fast initial growth, then plateaus
+  return Math.min(1.0, 0.2 + 0.8 * Math.log(1 + dataPoints) / Math.log(1 + minForFull));
+}
+
+/**
+ * Calculate volatility score.
+ * Low standard deviation of occupancy = consistent patterns = higher confidence.
+ * High volatility = unpredictable = lower confidence.
+ */
+function calcVolatilityScore(volatility?: number): number {
+  if (volatility === undefined) return 0.65; // neutral when no data
+  // volatility is std dev on 0–1 scale. Typical range: 0.05 (stable) to 0.25 (volatile)
+  // Map: 0 → 1.0, 0.10 → 0.75, 0.20 → 0.50, 0.30+ → 0.30
+  return Math.max(0.30, 1.0 - volatility * 3.5);
+}
+
+/**
+ * Calculate the overall confidence score.
  * 
- * Formula:
- *   confidence = weighted average of all four sub-scores
- *   Weights: dataCompleteness=0.35, eventSignal=0.20, stability=0.25, trend=0.20
+ * Weights:
+ *   dataCompleteness = 0.25
+ *   eventSignal = 0.10
+ *   stability = 0.15
+ *   trend = 0.10
+ *   dataVolume = 0.25
+ *   volatility = 0.15
  */
 export function calculateConfidence(
   dayOffset: number,
@@ -76,17 +94,24 @@ export function calculateConfidence(
   const {
     historicalStability = 0.75,
     forecastHorizon = 30,
+    dataPointCount = 0,
+    minDataForFullConfidence = 90,
+    occupancyVolatility,
   } = config;
 
   const dataCompleteness = calcDataCompleteness(dayOffset, forecastHorizon);
   const eventSignalStrength = calcEventSignalStrength(hasEvent, eventMultiplier);
   const trendConsistency = calcTrendConsistency(trendFactor);
+  const dataVolumeScore = calcDataVolumeScore(dataPointCount, minDataForFullConfidence);
+  const volatilityScore = calcVolatilityScore(occupancyVolatility);
 
   const weightedScore =
-    dataCompleteness * 0.35 +
-    eventSignalStrength * 0.20 +
-    historicalStability * 0.25 +
-    trendConsistency * 0.20;
+    dataCompleteness * 0.25 +
+    eventSignalStrength * 0.10 +
+    historicalStability * 0.15 +
+    trendConsistency * 0.10 +
+    dataVolumeScore * 0.25 +
+    volatilityScore * 0.15;
 
   const confidence = Math.max(0, Math.min(100, Math.round(weightedScore * 100)));
 
@@ -96,5 +121,7 @@ export function calculateConfidence(
     eventSignalStrength: Math.round(eventSignalStrength * 100) / 100,
     historicalStability,
     trendConsistency: Math.round(trendConsistency * 100) / 100,
+    dataVolumeScore: Math.round(dataVolumeScore * 100) / 100,
+    volatilityScore: Math.round(volatilityScore * 100) / 100,
   };
 }

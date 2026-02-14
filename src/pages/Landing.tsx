@@ -1,23 +1,19 @@
 import { Link } from "react-router-dom";
 import { useMemo } from "react";
-import { ArrowRight, BarChart3, Brain, TrendingUp, Shield, Zap, Building2, ChevronRight, Check, Database } from "lucide-react";
+import { ArrowRight, Brain, TrendingUp, Shield, Zap, Building2, ChevronRight, Check, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getStoredHistoricalData, computeHistoricalStats } from "@/pricing-engine";
 import { generateForecasts, computeKPIs, hotelProfile } from "@/data/mockData";
 import { useAuth } from "@/contexts/AuthContext";
 import UserMenu from "@/components/UserMenu";
+import QonaqLogo from "@/components/QonaqLogo";
 
 const Navbar = () => {
   const { user } = useAuth();
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
       <div className="container mx-auto flex h-16 items-center justify-between px-6">
-        <Link to="/" className="flex items-center gap-2 font-semibold text-lg">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <BarChart3 className="h-4 w-4 text-primary-foreground" />
-          </div>
-          RevPilot
-        </Link>
+        <QonaqLogo linkTo="/" size="md" />
         <div className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
           <a href="#features" className="hover:text-foreground transition-colors">Features</a>
           <a href="#roi" className="hover:text-foreground transition-colors">ROI</a>
@@ -37,7 +33,7 @@ const Navbar = () => {
                 <Button variant="ghost" size="sm">Log in</Button>
               </Link>
               <Link to="/signup">
-                <Button size="sm">Start Free Trial <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Button>
+                <Button size="sm">Request Early Access <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Button>
               </Link>
             </>
           )}
@@ -84,27 +80,26 @@ const tiers = [
   {
     name: "Starter",
     price: "149",
-    description: "For small boutique hotels getting started with dynamic pricing.",
+    description: "For boutique hotels getting started with intelligent pricing.",
     features: ["Up to 30 rooms", "30-day forecasting", "Basic pricing engine", "Email alerts", "1 user"],
   },
   {
     name: "Professional",
     price: "349",
-    description: "For mid-sized hotels serious about revenue optimization.",
+    description: "For hotels serious about revenue optimization.",
     features: ["Up to 100 rooms", "90-day forecasting", "Advanced AI pricing", "Event detection", "Competitor tracking", "5 users", "API access"],
     popular: true,
   },
   {
     name: "Enterprise",
     price: "749",
-    description: "For hotel groups and chains requiring multi-property management.",
+    description: "For hotel groups requiring multi-property management.",
     features: ["Unlimited rooms", "365-day forecasting", "Custom ML models", "PMS integration", "Unlimited users", "Dedicated support", "Multi-property"],
   },
 ];
 
 export default function Landing() {
   const { user } = useAuth();
-  // Compute dynamic stats from real data when available
   const dynamicStats = useMemo(() => {
     const historicalData = getStoredHistoricalData();
     const stats = computeHistoricalStats(historicalData);
@@ -129,70 +124,58 @@ export default function Landing() {
     };
   }, []);
 
-  const statsDisplay = [
-    { value: dynamicStats.revenueLift, label: "Projected Revenue Lift" },
-    { value: dynamicStats.avgConfidence, label: "Avg. AI Confidence" },
-    { value: dynamicStats.setupTime, label: "Daily Setup Time" },
-    { value: dynamicStats.dataPoints, label: dynamicStats.hasRealData ? "Days of Data" : "Data Mode" },
-  ];
-
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
 
       {/* Hero */}
-      <section className="relative pt-32 pb-20 overflow-hidden">
-        <div className="absolute inset-0 bg-grid opacity-40" />
+      <section className="relative pt-36 pb-24 overflow-hidden">
+        <div className="absolute inset-0 bg-grid opacity-30" />
         <div className="container relative mx-auto px-6 text-center">
           <div className="mx-auto max-w-3xl">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 text-sm text-muted-foreground shadow-card">
-              <Zap className="h-3.5 w-3.5 text-primary" />
-              AI-powered revenue optimization for hotels
+            <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 text-sm text-muted-foreground shadow-card">
+              <span className="h-1.5 w-1.5 rounded-full bg-gold animate-pulse" />
+              AI Intelligence Platform for Modern Hotels
             </div>
-            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-              Stop leaving revenue
-              <span className="text-gradient"> on the table</span>
+            <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl leading-[1.1]">
+              Smarter Revenue Decisions
+              <br />
+              <span className="text-primary">for Modern Hotels.</span>
             </h1>
             <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto">
-              RevPilot uses AI demand forecasting to recommend optimal daily room prices.
-              {dynamicStats.hasRealData
-                ? <> Based on your data, RevPilot projects a <strong className="text-foreground">{dynamicStats.revenueLift} revenue lift</strong>.</>
-                : <> Upload your hotel data to see projected revenue improvements based on <strong className="text-foreground">real calculations</strong>.</>
-              }
+              QonaqAI uses real-time market signals, demand forecasting, and AI optimization to maximize hotel profitability.
             </p>
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link to={user ? "/dashboard" : "/signup"}>
-                <Button size="lg" className="px-8">
-                  {user ? "Go to Dashboard" : "Start Free Trial"} <ArrowRight className="ml-2 h-4 w-4" />
+                <Button size="lg" className="px-8 h-12 text-base">
+                  {user ? "Go to Dashboard" : "Request Early Access"} <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
-              <Link to="/data-import">
-                <Button variant="outline" size="lg" className="px-8">
-                  <Database className="mr-2 h-4 w-4" /> Import Your Data
+              <a href="mailto:hello@qonaq.ai">
+                <Button variant="outline" size="lg" className="px-8 h-12 text-base">
+                  Book a Demo
                 </Button>
-              </Link>
+              </a>
             </div>
           </div>
 
-          {/* Stats - Dynamic */}
-          <div className="mx-auto mt-16 grid max-w-3xl grid-cols-2 gap-8 sm:grid-cols-4">
-            {statsDisplay.map((stat) => (
-              <div key={stat.label} className="text-center">
-                <div className="text-2xl font-bold text-primary">{stat.value}</div>
-                <div className="mt-1 text-xs text-muted-foreground">{stat.label}</div>
-              </div>
-            ))}
+          {/* Trust indicators */}
+          <div className="mx-auto mt-20 flex flex-wrap items-center justify-center gap-x-10 gap-y-4 text-sm text-muted-foreground">
+            <span className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> SOC 2 Compliant</span>
+            <span className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> GDPR Ready</span>
+            <span className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> 99.9% Uptime</span>
+            <span className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> No PMS Lock-in</span>
           </div>
         </div>
       </section>
 
       {/* Features */}
-      <section id="features" className="py-20 border-t border-border">
+      <section id="features" className="py-24 border-t border-border">
         <div className="container mx-auto px-6">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl font-bold">Everything you need to maximize revenue</h2>
-            <p className="mt-3 text-muted-foreground max-w-xl mx-auto">
-              Built specifically for independent hotels with 20–150 rooms. No complex setup, no revenue management degree required.
+          <div className="text-center mb-16">
+            <h2 className="font-display text-3xl font-bold">Built for Revenue Excellence</h2>
+            <p className="mt-4 text-muted-foreground max-w-xl mx-auto">
+              Purpose-built for independent hotels. No complex setup, no revenue management degree required.
             </p>
           </div>
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto">
@@ -201,7 +184,7 @@ export default function Landing() {
                 <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-accent">
                   <f.icon className="h-5 w-5 text-accent-foreground" />
                 </div>
-                <h3 className="font-semibold mb-2">{f.title}</h3>
+                <h3 className="font-display font-semibold mb-2">{f.title}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">{f.description}</p>
               </div>
             ))}
@@ -210,40 +193,40 @@ export default function Landing() {
       </section>
 
       {/* ROI Section */}
-      <section id="roi" className="py-20 border-t border-border bg-card">
+      <section id="roi" className="py-24 border-t border-border bg-card">
         <div className="container mx-auto px-6">
           <div className="mx-auto max-w-3xl text-center">
-            <h2 className="text-3xl font-bold">The ROI is clear</h2>
-            <p className="mt-3 text-muted-foreground">
+            <h2 className="font-display text-3xl font-bold">Measurable Impact</h2>
+            <p className="mt-4 text-muted-foreground">
               {dynamicStats.hasRealData
                 ? "Based on your uploaded historical data"
-                : "Example projection for an 85-room hotel at €120 base rate"
+                : "Projected results based on industry benchmarks"
               }
             </p>
             {(() => {
               const forecasts = generateForecasts(hotelProfile.rooms, hotelProfile.basePrice, hotelProfile.avgOccupancy);
               const kpis = computeKPIs(forecasts);
               return (
-                <div className="mt-10 grid gap-6 sm:grid-cols-3">
+                <div className="mt-12 grid gap-6 sm:grid-cols-3">
                   <div className="rounded-xl border border-border bg-background p-6">
                     <div className="text-sm text-muted-foreground">Static Pricing Revenue</div>
-                    <div className="mt-2 text-2xl font-bold">€{kpis.staticRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                    <div className="mt-2 text-2xl font-display font-bold">€{kpis.staticRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                     <div className="mt-1 text-xs text-muted-foreground">/30 days</div>
                   </div>
                   <div className="rounded-xl border-2 border-primary bg-background p-6 shadow-elevated">
                     <div className="text-sm text-primary font-medium">AI-Optimized Revenue</div>
-                    <div className="mt-2 text-2xl font-bold text-primary">€{kpis.projectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                    <div className="mt-2 text-2xl font-display font-bold text-primary">€{kpis.projectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                     <div className="mt-1 text-xs text-muted-foreground">/30 days</div>
                   </div>
                   <div className="rounded-xl border border-success/30 bg-background p-6">
                     <div className="text-sm text-success font-medium">Projected Uplift</div>
-                    <div className="mt-2 text-2xl font-bold text-success">+€{(kpis.projectedRevenue - kpis.staticRevenue).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                    <div className="mt-2 text-2xl font-display font-bold text-gold">+€{(kpis.projectedRevenue - kpis.staticRevenue).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                     <div className="mt-1 text-xs text-muted-foreground">+{kpis.revenueLift}%</div>
                   </div>
                 </div>
               );
             })()}
-            <p className="mt-8 text-sm text-muted-foreground">
+            <p className="mt-10 text-sm text-muted-foreground">
               {dynamicStats.hasRealData
                 ? "These projections are calculated from your actual hotel performance data."
                 : "Upload your historical data to see personalized projections."
@@ -254,11 +237,11 @@ export default function Landing() {
       </section>
 
       {/* Pricing Preview */}
-      <section className="py-20 border-t border-border">
+      <section className="py-24 border-t border-border">
         <div className="container mx-auto px-6">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl font-bold">Simple, transparent pricing</h2>
-            <p className="mt-3 text-muted-foreground">No hidden fees. Cancel anytime. Start with a 14-day free trial.</p>
+          <div className="text-center mb-16">
+            <h2 className="font-display text-3xl font-bold">Transparent Pricing</h2>
+            <p className="mt-4 text-muted-foreground">No hidden fees. Cancel anytime. Start with a 14-day free trial.</p>
           </div>
           <div className="grid gap-6 md:grid-cols-3 max-w-4xl mx-auto">
             {tiers.map((tier) => (
@@ -272,18 +255,18 @@ export default function Landing() {
               >
                 {tier.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-0.5 text-xs font-medium text-primary-foreground">
-                    Most Popular
+                    Recommended
                   </div>
                 )}
-                <h3 className="font-semibold text-lg">{tier.name}</h3>
+                <h3 className="font-display font-semibold text-lg">{tier.name}</h3>
                 <div className="mt-2">
-                  <span className="text-3xl font-bold">${tier.price}</span>
+                  <span className="text-3xl font-display font-bold">${tier.price}</span>
                   <span className="text-muted-foreground text-sm">/month</span>
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">{tier.description}</p>
-                <Link to="/dashboard" className="block mt-6">
+                <Link to={user ? "/dashboard" : "/signup"} className="block mt-6">
                   <Button className="w-full" variant={tier.popular ? "default" : "outline"} size="sm">
-                    Start Trial <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                    Get Started <ChevronRight className="ml-1 h-3.5 w-3.5" />
                   </Button>
                 </Link>
                 <ul className="mt-6 space-y-2.5">
@@ -301,23 +284,23 @@ export default function Landing() {
       </section>
 
       {/* CTA */}
-      <section className="py-20 border-t border-border bg-card">
+      <section className="py-24 border-t border-border bg-card">
         <div className="container mx-auto px-6 text-center">
-          <h2 className="text-3xl font-bold">Ready to optimize your revenue?</h2>
-          <p className="mt-3 text-muted-foreground max-w-lg mx-auto">
-            Upload your historical data and see exactly how much more revenue RevPilot can generate for your hotel.
+          <h2 className="font-display text-3xl font-bold">Ready to Maximize Your Revenue?</h2>
+          <p className="mt-4 text-muted-foreground max-w-lg mx-auto">
+            Join forward-thinking hoteliers using AI to make smarter pricing decisions every day.
           </p>
-          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link to="/data-import" className="inline-block">
-              <Button size="lg" className="px-8">
-                Import Your Data <ArrowRight className="ml-2 h-4 w-4" />
+          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link to={user ? "/dashboard" : "/signup"} className="inline-block">
+              <Button size="lg" className="px-8 h-12 text-base">
+                Request Early Access <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
-            <Link to="/dashboard" className="inline-block">
-              <Button variant="outline" size="lg" className="px-8">
-                Try Demo Dashboard
+            <a href="mailto:hello@qonaq.ai" className="inline-block">
+              <Button variant="outline" size="lg" className="px-8 h-12 text-base">
+                Book a Demo
               </Button>
-            </Link>
+            </a>
           </div>
         </div>
       </section>
@@ -325,13 +308,8 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t border-border py-10">
         <div className="container mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2 font-semibold">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-              <BarChart3 className="h-3.5 w-3.5 text-primary-foreground" />
-            </div>
-            RevPilot
-          </div>
-          <p className="text-sm text-muted-foreground">© 2026 RevPilot. AI Revenue Engine for Independent Hotels.</p>
+          <QonaqLogo size="sm" />
+          <p className="text-sm text-muted-foreground">© 2026 QonaqAI. AI Intelligence Platform for Modern Hotels.</p>
         </div>
       </footer>
     </div>

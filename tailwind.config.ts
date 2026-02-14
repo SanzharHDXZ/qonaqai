@@ -14,7 +14,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["DM Sans", "system-ui", "sans-serif"],
+        display: ["Plus Jakarta Sans", "DM Sans", "system-ui", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -41,6 +42,11 @@ export default {
         warning: {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
+        },
+        gold: {
+          DEFAULT: "hsl(var(--gold))",
+          foreground: "hsl(var(--gold-foreground))",
+          soft: "hsl(var(--gold-soft))",
         },
         muted: {
           DEFAULT: "hsl(var(--muted))",
@@ -81,6 +87,9 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      letterSpacing: {
+        elegant: "0.02em",
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
@@ -97,10 +106,6 @@ export default {
         "slide-in": {
           from: { opacity: "0", transform: "translateX(-8px)" },
           to: { opacity: "1", transform: "translateX(0)" },
-        },
-        "count-up": {
-          from: { opacity: "0" },
-          to: { opacity: "1" },
         },
       },
       animation: {

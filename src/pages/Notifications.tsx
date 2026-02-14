@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
-import { ChevronLeft, BarChart3, Bell, CheckCheck, AlertTriangle, Info, AlertCircle } from "lucide-react";
+import { ChevronLeft, Bell, CheckCheck, AlertTriangle, Info, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useActiveHotel } from "@/hooks/useActiveHotel";
 import { useAlerts } from "@/hooks/useAlerts";
 import UserMenu from "@/components/UserMenu";
+import QonaqLogo from "@/components/QonaqLogo";
 
 const severityConfig = {
   critical: { icon: AlertTriangle, color: "text-destructive", bg: "bg-destructive/10" },
@@ -23,12 +24,7 @@ export default function Notifications() {
             <Link to="/dashboard" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <ChevronLeft className="h-4 w-4" />
             </Link>
-            <div className="flex items-center gap-2 font-semibold">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-                <BarChart3 className="h-3.5 w-3.5 text-primary-foreground" />
-              </div>
-              RevPilot
-            </div>
+            <QonaqLogo size="sm" />
             <span className="hidden sm:inline text-sm text-muted-foreground">/ Notifications</span>
           </div>
           <UserMenu />
@@ -37,7 +33,7 @@ export default function Notifications() {
 
       <main className="container mx-auto px-6 py-8 max-w-2xl space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Notifications</h1>
+          <h1 className="text-2xl font-display font-bold">Notifications</h1>
           {unreadCount > 0 && (
             <Button variant="outline" size="sm" onClick={markAllAsRead} className="gap-2">
               <CheckCheck className="h-4 w-4" /> Mark all read
@@ -61,35 +57,19 @@ export default function Notifications() {
               const config = severityConfig[alert.severity as keyof typeof severityConfig] || severityConfig.info;
               const Icon = config.icon;
               return (
-                <div
-                  key={alert.id}
-                  className={`flex gap-3 rounded-xl border p-4 transition-colors ${
-                    alert.read_at ? "border-border bg-card opacity-70" : "border-primary/20 bg-card"
-                  }`}
-                >
+                <div key={alert.id} className={`flex gap-3 rounded-xl border p-4 transition-colors ${alert.read_at ? "border-border bg-card opacity-70" : "border-primary/20 bg-card"}`}>
                   <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${config.bg}`}>
                     <Icon className={`h-4 w-4 ${config.color}`} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-medium">{alert.title}</span>
-                      {!alert.read_at && (
-                        <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
-                      )}
+                      {!alert.read_at && <span className="h-2 w-2 rounded-full bg-primary shrink-0" />}
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground">{alert.message}</p>
                     <div className="mt-2 flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(alert.created_at).toLocaleDateString()}
-                      </span>
-                      {!alert.read_at && (
-                        <button
-                          onClick={() => markAsRead(alert.id)}
-                          className="text-xs text-primary hover:underline"
-                        >
-                          Mark as read
-                        </button>
-                      )}
+                      <span className="text-xs text-muted-foreground">{new Date(alert.created_at).toLocaleDateString()}</span>
+                      {!alert.read_at && <button onClick={() => markAsRead(alert.id)} className="text-xs text-primary hover:underline">Mark as read</button>}
                     </div>
                   </div>
                 </div>

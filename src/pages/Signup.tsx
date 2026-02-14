@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { BarChart3 } from "lucide-react";
+import { CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import QonaqLogo from "@/components/QonaqLogo";
 
 export default function Signup() {
   const [email, setEmail] = useState("");
@@ -41,9 +42,9 @@ export default function Signup() {
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="w-full max-w-sm text-center space-y-4">
           <div className="flex h-12 w-12 mx-auto items-center justify-center rounded-full bg-success/10">
-            <BarChart3 className="h-6 w-6 text-success" />
+            <CheckCircle className="h-6 w-6 text-success" />
           </div>
-          <h1 className="text-2xl font-bold">Check your email</h1>
+          <h1 className="text-2xl font-display font-bold">Check your email</h1>
           <p className="text-sm text-muted-foreground">
             We sent a verification link to <strong>{email}</strong>. Click it to activate your account, then sign in.
           </p>
@@ -59,14 +60,9 @@ export default function Signup() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
-          <Link to="/" className="inline-flex items-center gap-2 font-semibold text-lg">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <BarChart3 className="h-4 w-4 text-primary-foreground" />
-            </div>
-            RevPilot
-          </Link>
-          <h1 className="mt-4 text-2xl font-bold">Create your account</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Start your 14-day free trial</p>
+          <QonaqLogo linkTo="/" size="lg" className="justify-center" />
+          <h1 className="mt-6 text-2xl font-display font-bold">Create your account</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Get started with QonaqAI</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

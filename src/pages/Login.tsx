@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import QonaqLogo from "@/components/QonaqLogo";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -31,13 +31,8 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
-          <Link to="/" className="inline-flex items-center gap-2 font-semibold text-lg">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <BarChart3 className="h-4 w-4 text-primary-foreground" />
-            </div>
-            RevPilot
-          </Link>
-          <h1 className="mt-4 text-2xl font-bold">Welcome back</h1>
+          <QonaqLogo linkTo="/" size="lg" className="justify-center" />
+          <h1 className="mt-6 text-2xl font-display font-bold">Welcome back</h1>
           <p className="mt-1 text-sm text-muted-foreground">Sign in to your account</p>
         </div>
 

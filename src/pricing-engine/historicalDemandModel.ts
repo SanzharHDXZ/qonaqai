@@ -186,7 +186,7 @@ export function computeHistoricalStats(records: HistoricalRecord[]): HistoricalD
  */
 export function getStoredHistoricalData(): HistoricalRecord[] {
   try {
-    const data = localStorage.getItem("revpilot_historical_data");
+    const data = localStorage.getItem("qonaqai_historical_data");
     return data ? JSON.parse(data) : [];
   } catch {
     return [];

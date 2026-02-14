@@ -20,6 +20,7 @@ import type { CompetitorRate, WeatherData, LocalEvent } from "@/pricing-engine";
 import ExplainPrice from "@/components/ExplainPrice";
 import UserMenu from "@/components/UserMenu";
 import HotelSwitcher from "@/components/HotelSwitcher";
+import QonaqLogo from "@/components/QonaqLogo";
 import { useActiveHotel } from "@/hooks/useActiveHotel";
 import { useHotelHistoricalData } from "@/hooks/useHotelHistoricalData";
 import { useAlerts } from "@/hooks/useAlerts";
@@ -310,12 +311,7 @@ export default function Dashboard() {
             <Link to="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <ChevronLeft className="h-4 w-4" />
             </Link>
-            <div className="flex items-center gap-2 font-semibold">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-                <BarChart3 className="h-3.5 w-3.5 text-primary-foreground" />
-              </div>
-              RevPilot
-            </div>
+            <QonaqLogo size="sm" />
             <HotelSwitcher activeHotel={activeHotel} allHotels={allHotels} onSwitch={switchHotel} />
           </div>
           <div className="flex items-center gap-2">
@@ -355,7 +351,7 @@ export default function Dashboard() {
         {/* Welcome + Data Status */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold">Revenue Dashboard</h1>
+            <h1 className="text-2xl font-display font-bold">Revenue Dashboard</h1>
             <p className="text-sm text-muted-foreground mt-1">
               {hotel.name} · {hotel.rooms} rooms · {hotel.city}
               {historicalStats.hasData && (

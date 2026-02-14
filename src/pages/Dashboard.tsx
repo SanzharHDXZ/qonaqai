@@ -12,10 +12,14 @@ import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
-import { generateForecasts, generateAlerts, computeKPIs, competitors, hotelProfile, type DailyForecast, type Alert } from "@/data/mockData";
-import { simulateRevenue, runBacktest, getStoredHistoricalData, computeHistoricalStats, calculateForecastAccuracy, buildForecastRecords } from "@/pricing-engine";
+import { generateForecasts, generateAlerts, computeKPIs, competitors, type DailyForecast, type Alert } from "@/data/mockData";
+import { simulateRevenue, runBacktest, computeHistoricalStats, calculateForecastAccuracy, buildForecastRecords } from "@/pricing-engine";
 import ExplainPrice from "@/components/ExplainPrice";
 import UserMenu from "@/components/UserMenu";
+import HotelSwitcher from "@/components/HotelSwitcher";
+import { useActiveHotel } from "@/hooks/useActiveHotel";
+import { useHotelHistoricalData } from "@/hooks/useHotelHistoricalData";
+import { useAlerts } from "@/hooks/useAlerts";
 
 // ─── KPI Card ──────────────────────────────────────────
 function KPICard({ title, value, sub, icon: Icon, trend }: {
@@ -92,13 +96,29 @@ function ConfidenceGauge({ value }: { value: number }) {
 
 // ─── Main Dashboard ────────────────────────────────────
 export default function Dashboard() {
-  const historicalData = useMemo(() => getStoredHistoricalData(), []);
+  const { activeHotel, allHotels, loading: hotelLoading, switchHotel } = useActiveHotel();
+  const { historicalData, loading: dataLoading } = useHotelHistoricalData(activeHotel?.id);
+  const { unreadCount } = useAlerts(activeHotel?.id);
+
+  // Derive hotel profile from active hotel (real DB data)
+  const hotel = useMemo(() => {
+    if (!activeHotel) return { name: "Loading…", rooms: 85, city: "", avgOccupancy: 0.72, basePrice: 120, currency: "€" };
+    return {
+      name: activeHotel.name,
+      rooms: activeHotel.rooms,
+      city: activeHotel.city,
+      avgOccupancy: Number(activeHotel.avg_occupancy),
+      basePrice: Number(activeHotel.base_price),
+      currency: activeHotel.currency,
+    };
+  }, [activeHotel]);
+
   const historicalStats = useMemo(() => computeHistoricalStats(historicalData), [historicalData]);
 
   const forecasts = useMemo(() => generateForecasts(
-    hotelProfile.rooms,
-    hotelProfile.basePrice,
-    hotelProfile.avgOccupancy,
+    hotel.rooms,
+    hotel.basePrice,
+    hotel.avgOccupancy,
     historicalStats.hasData ? {
       dataPointCount: historicalStats.totalRecords,
       occupancyVolatility: historicalStats.occupancyVolatility,
@@ -107,12 +127,13 @@ export default function Dashboard() {
       rolling30DaySeasonality: historicalStats.rolling30DaySeasonality,
       weekdayBookingPace: historicalStats.weekdayBookingPace,
     } : undefined
-  ), [historicalStats]);
+  ), [hotel, historicalStats]);
 
   const kpiData = useMemo(() => computeKPIs(forecasts), [forecasts]);
   const alerts = useMemo(() => generateAlerts(forecasts), [forecasts]);
-  const [selectedDay, setSelectedDay] = useState<DailyForecast>(forecasts[0]);
-  const [manualPrice, setManualPrice] = useState(selectedDay.recommendedPrice);
+  const [selectedDay, setSelectedDay] = useState<DailyForecast | null>(null);
+  const activeDay = selectedDay || forecasts[0];
+  const [manualPrice, setManualPrice] = useState(activeDay?.recommendedPrice ?? 120);
   const [showExplain, setShowExplain] = useState(false);
   const [showBacktest, setShowBacktest] = useState(false);
 
@@ -120,11 +141,11 @@ export default function Dashboard() {
   const backtestResult = useMemo(() => {
     if (!showBacktest || historicalData.length === 0) return null;
     return runBacktest(historicalData, {
-      baseOccupancy: hotelProfile.avgOccupancy,
-      basePrice: hotelProfile.basePrice,
-      totalRooms: hotelProfile.rooms,
+      baseOccupancy: hotel.avgOccupancy,
+      basePrice: hotel.basePrice,
+      totalRooms: hotel.rooms,
     });
-  }, [showBacktest, historicalData]);
+  }, [showBacktest, historicalData, hotel]);
 
   // Forecast accuracy tracking
   const forecastAccuracy = useMemo(() => {
@@ -139,12 +160,12 @@ export default function Dashboard() {
 
   // Revenue simulation
   const simulation = useMemo(() => simulateRevenue({
-    totalRooms: hotelProfile.rooms,
-    predictedOccupancy: selectedDay.predictedOccupancy,
-    recommendedPrice: selectedDay.recommendedPrice,
-    staticPrice: selectedDay.staticPrice,
+    totalRooms: hotel.rooms,
+    predictedOccupancy: activeDay?.predictedOccupancy ?? 72,
+    recommendedPrice: activeDay?.recommendedPrice ?? 120,
+    staticPrice: activeDay?.staticPrice ?? hotel.basePrice,
     manualPrice,
-  }), [manualPrice, selectedDay]);
+  }), [manualPrice, activeDay, hotel]);
 
   const chartData = forecasts.map((f) => ({
     name: f.dayLabel,
@@ -154,6 +175,14 @@ export default function Dashboard() {
     aiRevenue: f.aiRevenue,
     staticRevenue: f.staticRevenue,
   }));
+
+  if (hotelLoading || dataLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -170,7 +199,7 @@ export default function Dashboard() {
               </div>
               RevPilot
             </div>
-            <span className="hidden sm:inline text-sm text-muted-foreground">/ {hotelProfile.name}</span>
+            <HotelSwitcher activeHotel={activeHotel} allHotels={allHotels} onSwitch={switchHotel} />
           </div>
           <div className="flex items-center gap-2">
             <Link to="/data-import">
@@ -179,8 +208,19 @@ export default function Dashboard() {
                 <span className="hidden sm:inline">Import Data</span>
               </Button>
             </Link>
-            <Button variant="ghost" size="icon" className="h-8 w-8"><Bell className="h-4 w-4" /></Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8"><Settings className="h-4 w-4" /></Button>
+            <Link to="/notifications">
+              <Button variant="ghost" size="icon" className="h-8 w-8 relative">
+                <Bell className="h-4 w-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </Button>
+            </Link>
+            <Link to="/settings">
+              <Button variant="ghost" size="icon" className="h-8 w-8"><Settings className="h-4 w-4" /></Button>
+            </Link>
             <UserMenu />
           </div>
         </div>
@@ -192,7 +232,7 @@ export default function Dashboard() {
           <div>
             <h1 className="text-2xl font-bold">Revenue Dashboard</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {hotelProfile.name} · {hotelProfile.rooms} rooms · {hotelProfile.city}
+              {hotel.name} · {hotel.rooms} rooms · {hotel.city}
               {historicalStats.hasData && (
                 <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-xs text-success font-medium">
                   <Database className="h-3 w-3" />
@@ -201,7 +241,7 @@ export default function Dashboard() {
               )}
             </p>
           </div>
-          {historicalData.length > 0 && (
+          {historicalData.length > 0 ? (
             <Button
               variant={showBacktest ? "default" : "outline"}
               size="sm"
@@ -211,6 +251,13 @@ export default function Dashboard() {
               <FlaskConical className="h-4 w-4" />
               {showBacktest ? "Hide Backtest" : "Backtest Mode"}
             </Button>
+          ) : (
+            <Link to="/data-import">
+              <Button variant="outline" size="sm" className="gap-2">
+                <Database className="h-4 w-4" />
+                Import data to unlock backtesting
+              </Button>
+            </Link>
           )}
         </div>
 
@@ -227,16 +274,16 @@ export default function Dashboard() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <div className="rounded-lg border border-border bg-card p-4 text-center">
                 <div className="text-xs text-muted-foreground">Actual Revenue</div>
-                <div className="text-lg font-bold mt-1">€{backtestResult.actualTotalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                <div className="text-lg font-bold mt-1">{hotel.currency}{backtestResult.actualTotalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
               </div>
               <div className="rounded-lg border border-border bg-card p-4 text-center">
                 <div className="text-xs text-muted-foreground">AI Projected Revenue</div>
-                <div className="text-lg font-bold text-primary mt-1">€{backtestResult.aiTotalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                <div className="text-lg font-bold text-primary mt-1">{hotel.currency}{backtestResult.aiTotalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
               </div>
               <div className="rounded-lg border border-border bg-card p-4 text-center">
                 <div className="text-xs text-muted-foreground">Revenue Difference</div>
                 <div className={`text-lg font-bold mt-1 ${backtestResult.revenueDifference >= 0 ? "text-success" : "text-destructive"}`}>
-                  {backtestResult.revenueDifference >= 0 ? "+" : ""}€{backtestResult.revenueDifference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  {backtestResult.revenueDifference >= 0 ? "+" : ""}{hotel.currency}{backtestResult.revenueDifference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </div>
               </div>
               <div className="rounded-lg border border-border bg-card p-4 text-center">
@@ -304,7 +351,7 @@ export default function Dashboard() {
                 <BarChart data={backtestResult.dailyResults.slice(-30)}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => v.slice(5)} />
-                  <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} />
+                  <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `${hotel.currency}${(v / 1000).toFixed(0)}k`} />
                   <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
                   <Bar dataKey="actualRevenue" fill="hsl(var(--muted-foreground))" radius={[2, 2, 0, 0]} name="Actual Revenue" />
                   <Bar dataKey="aiProjectedRevenue" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} name="AI Revenue" />
@@ -320,15 +367,15 @@ export default function Dashboard() {
             title="Avg. Predicted Occupancy"
             value={`${kpiData.avgOccupancy}%`}
             icon={Percent}
-            trend={{ value: `+€${kpiData.avgRecommendedPrice - hotelProfile.basePrice}`, positive: kpiData.avgRecommendedPrice > hotelProfile.basePrice }}
+            trend={{ value: `+${hotel.currency}${kpiData.avgRecommendedPrice - hotel.basePrice}`, positive: kpiData.avgRecommendedPrice > hotel.basePrice }}
             sub="vs static pricing"
           />
           <KPICard
             title="Avg. Recommended Price"
-            value={`€${kpiData.avgRecommendedPrice}`}
+            value={`${hotel.currency}${kpiData.avgRecommendedPrice}`}
             icon={DollarSign}
-            trend={{ value: `+€${kpiData.avgRecommendedPrice - hotelProfile.basePrice}`, positive: true }}
-            sub={`above base €${hotelProfile.basePrice}`}
+            trend={{ value: `+${hotel.currency}${kpiData.avgRecommendedPrice - hotel.basePrice}`, positive: true }}
+            sub={`above base ${hotel.currency}${hotel.basePrice}`}
           />
           <KPICard
             title="AI Confidence Score"
@@ -340,7 +387,7 @@ export default function Dashboard() {
             title="Projected Revenue Lift"
             value={`+${kpiData.revenueLift}%`}
             icon={TrendingUp}
-            trend={{ value: `+€${(kpiData.projectedRevenue - kpiData.staticRevenue).toLocaleString()}`, positive: true }}
+            trend={{ value: `+${hotel.currency}${(kpiData.projectedRevenue - kpiData.staticRevenue).toLocaleString()}`, positive: true }}
             sub="this month"
           />
         </div>
@@ -381,7 +428,7 @@ export default function Dashboard() {
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `€${v}`} />
+                  <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `${hotel.currency}${v}`} />
                   <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
                   <Line type="monotone" dataKey="aiPrice" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} name="AI Price" />
                   <Line type="monotone" dataKey="staticPrice" stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} strokeDasharray="5 5" dot={false} name="Static Price" />
@@ -397,7 +444,7 @@ export default function Dashboard() {
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} />
+                  <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `${hotel.currency}${(v / 1000).toFixed(0)}k`} />
                   <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
                   <Bar dataKey="staticRevenue" fill="hsl(var(--muted))" radius={[2, 2, 0, 0]} name="Static Revenue" />
                   <Bar dataKey="aiRevenue" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} name="AI Revenue" />
@@ -432,7 +479,7 @@ export default function Dashboard() {
                   {forecasts.slice(0, 10).map((f) => (
                     <tr
                       key={f.date}
-                      className={`border-b border-border hover:bg-muted/30 cursor-pointer transition-colors ${selectedDay.date === f.date ? "bg-accent/50" : ""}`}
+                      className={`border-b border-border hover:bg-muted/30 cursor-pointer transition-colors ${activeDay?.date === f.date ? "bg-accent/50" : ""}`}
                       onClick={() => { setSelectedDay(f); setManualPrice(f.recommendedPrice); setShowExplain(false); }}
                     >
                       <td className="px-4 py-3 font-medium">{f.dayLabel}</td>
@@ -441,8 +488,8 @@ export default function Dashboard() {
                           {f.predictedOccupancy}%
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold">€{f.recommendedPrice}</td>
-                      <td className="px-4 py-3 text-right text-muted-foreground">€{f.minPrice}–€{f.maxPrice}</td>
+                      <td className="px-4 py-3 text-right font-semibold">{hotel.currency}{f.recommendedPrice}</td>
+                      <td className="px-4 py-3 text-right text-muted-foreground">{hotel.currency}{f.minPrice}–{hotel.currency}{f.maxPrice}</td>
                       <td className="px-4 py-3 text-right">
                         <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
                           f.confidence >= 85 ? "bg-success/10 text-success" : f.confidence >= 70 ? "bg-warning/10 text-warning" : "bg-destructive/10 text-destructive"
@@ -487,50 +534,50 @@ export default function Dashboard() {
           {/* Right Column */}
           <div className="space-y-6">
             {/* Explain Price Panel */}
-            {showExplain && (
+            {showExplain && activeDay && (
               <ExplainPrice
-                forecast={selectedDay}
-                basePrice={hotelProfile.basePrice}
+                forecast={activeDay}
+                basePrice={hotel.basePrice}
                 onClose={() => setShowExplain(false)}
               />
             )}
 
             {/* Confidence Gauge */}
-            {!showExplain && (
+            {!showExplain && activeDay && (
               <div className="rounded-xl border border-border bg-card p-5">
-                <h3 className="text-sm font-medium mb-4">Price Confidence – {selectedDay.dayLabel}</h3>
+                <h3 className="text-sm font-medium mb-4">Price Confidence – {activeDay.dayLabel}</h3>
                 <div className="flex justify-center my-4">
-                  <ConfidenceGauge value={selectedDay.confidence} />
+                  <ConfidenceGauge value={activeDay.confidence} />
                 </div>
                 <div className="mt-6 space-y-3">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Data completeness</span>
-                    <span className="font-medium">{Math.round(selectedDay.dataCompleteness * 100)}%</span>
+                    <span className="font-medium">{Math.round(activeDay.dataCompleteness * 100)}%</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Event signal</span>
-                    <span className="font-medium">{Math.round(selectedDay.eventSignalStrength * 100)}%</span>
+                    <span className="font-medium">{Math.round(activeDay.eventSignalStrength * 100)}%</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Trend consistency</span>
-                    <span className="font-medium">{Math.round(selectedDay.trendConsistency * 100)}%</span>
+                    <span className="font-medium">{Math.round(activeDay.trendConsistency * 100)}%</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Data volume</span>
-                    <span className="font-medium">{Math.round(selectedDay.dataVolumeScore * 100)}%</span>
+                    <span className="font-medium">{Math.round(activeDay.dataVolumeScore * 100)}%</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Volatility score</span>
-                    <span className="font-medium">{Math.round(selectedDay.volatilityScore * 100)}%</span>
+                    <span className="font-medium">{Math.round(activeDay.volatilityScore * 100)}%</span>
                   </div>
                   <div className="border-t border-border my-2" />
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Underpricing risk</span>
-                    <span className={`font-medium ${selectedDay.predictedOccupancy > 75 ? "text-warning" : "text-success"}`}>{selectedDay.predictedOccupancy > 75 ? "High" : "Low"}</span>
+                    <span className={`font-medium ${activeDay.predictedOccupancy > 75 ? "text-warning" : "text-success"}`}>{activeDay.predictedOccupancy > 75 ? "High" : "Low"}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Overpricing risk</span>
-                    <span className={`font-medium ${selectedDay.predictedOccupancy < 60 ? "text-destructive" : "text-success"}`}>{selectedDay.predictedOccupancy < 60 ? "High" : "Low"}</span>
+                    <span className={`font-medium ${activeDay.predictedOccupancy < 60 ? "text-destructive" : "text-success"}`}>{activeDay.predictedOccupancy < 60 ? "High" : "Low"}</span>
                   </div>
                 </div>
               </div>
@@ -555,25 +602,29 @@ export default function Dashboard() {
             <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
               <SlidersHorizontal className="h-4 w-4 text-primary" /> Revenue Simulator
             </h3>
-            <p className="text-xs text-muted-foreground mb-5">Adjust price for {selectedDay.dayLabel} and see projected impact</p>
+            <p className="text-xs text-muted-foreground mb-5">Adjust price for {activeDay?.dayLabel} and see projected impact</p>
 
             <div className="space-y-6">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-muted-foreground">Manual Price</span>
-                  <span className="text-lg font-bold">€{manualPrice}</span>
+                  <span className="text-lg font-bold">{hotel.currency}{manualPrice}</span>
                 </div>
-                <Slider
-                  value={[manualPrice]}
-                  onValueChange={([v]) => setManualPrice(v)}
-                  min={selectedDay.minPrice}
-                  max={selectedDay.maxPrice}
-                  step={1}
-                />
-                <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                  <span>€{selectedDay.minPrice}</span>
-                  <span>€{selectedDay.maxPrice}</span>
-                </div>
+                {activeDay && (
+                  <>
+                    <Slider
+                      value={[manualPrice]}
+                      onValueChange={([v]) => setManualPrice(v)}
+                      min={activeDay.minPrice}
+                      max={activeDay.maxPrice}
+                      step={1}
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                      <span>{hotel.currency}{activeDay.minPrice}</span>
+                      <span>{hotel.currency}{activeDay.maxPrice}</span>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="grid grid-cols-3 gap-3">
@@ -583,12 +634,12 @@ export default function Dashboard() {
                 </div>
                 <div className="rounded-lg bg-muted p-3 text-center">
                   <div className="text-xs text-muted-foreground">Revenue</div>
-                  <div className="text-lg font-bold">€{simulation.manualRevenue.toLocaleString()}</div>
+                  <div className="text-lg font-bold">{hotel.currency}{simulation.manualRevenue.toLocaleString()}</div>
                 </div>
                 <div className="rounded-lg bg-muted p-3 text-center">
                   <div className="text-xs text-muted-foreground">vs AI</div>
                   <div className={`text-lg font-bold ${simulation.revenueVsAI >= 0 ? "text-success" : "text-destructive"}`}>
-                    {simulation.revenueVsAI >= 0 ? "+" : ""}€{simulation.revenueVsAI.toLocaleString()}
+                    {simulation.revenueVsAI >= 0 ? "+" : ""}{hotel.currency}{simulation.revenueVsAI.toLocaleString()}
                   </div>
                 </div>
               </div>
@@ -597,13 +648,13 @@ export default function Dashboard() {
                   {simulation.underpricingLoss > 0 && (
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-warning">Underpricing loss</span>
-                      <span className="font-medium text-warning">-€{simulation.underpricingLoss.toLocaleString()}</span>
+                      <span className="font-medium text-warning">-{hotel.currency}{simulation.underpricingLoss.toLocaleString()}</span>
                     </div>
                   )}
                   {simulation.overpricingLoss > 0 && (
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-destructive">Overpricing loss</span>
-                      <span className="font-medium text-destructive">-€{simulation.overpricingLoss.toLocaleString()}</span>
+                      <span className="font-medium text-destructive">-{hotel.currency}{simulation.overpricingLoss.toLocaleString()}</span>
                     </div>
                   )}
                 </div>
@@ -624,24 +675,24 @@ export default function Dashboard() {
                     <div className="text-xs text-muted-foreground">Rating: {c.rating}/5 · Occ: {c.occupancy}%</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-lg font-bold">€{c.avgPrice}</div>
+                    <div className="text-lg font-bold">{hotel.currency}{c.avgPrice}</div>
                     <div className="text-xs text-muted-foreground">avg/night</div>
                   </div>
                 </div>
               ))}
               <div className="flex items-center justify-between rounded-lg border-2 border-primary/30 bg-accent/50 p-4">
                 <div>
-                  <div className="text-sm font-medium text-primary">{hotelProfile.name} (You)</div>
+                  <div className="text-sm font-medium text-primary">{hotel.name} (You)</div>
                   <div className="text-xs text-muted-foreground">AI Recommended</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-bold text-primary">€{kpiData.avgRecommendedPrice}</div>
+                  <div className="text-lg font-bold text-primary">{hotel.currency}{kpiData.avgRecommendedPrice}</div>
                   <div className="text-xs text-muted-foreground">avg/night</div>
                 </div>
               </div>
               <div className="rounded-lg bg-muted p-3 text-center">
                 <span className="text-xs text-muted-foreground">Market Average: </span>
-                <span className="text-sm font-semibold">€{Math.round(competitors.reduce((s, c) => s + c.avgPrice, 0) / competitors.length)}</span>
+                <span className="text-sm font-semibold">{hotel.currency}{Math.round(competitors.reduce((s, c) => s + c.avgPrice, 0) / competitors.length)}</span>
               </div>
             </div>
           </div>

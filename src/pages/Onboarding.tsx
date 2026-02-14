@@ -1,11 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, Building2, ArrowRight, MapPin } from "lucide-react";
+import { BarChart3, Building2, ArrowRight, MapPin, CheckCircle, Bug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useActiveHotel } from "@/hooks/useActiveHotel";
 import { useToast } from "@/hooks/use-toast";
 
 interface CitySuggestion {
@@ -18,6 +19,8 @@ interface CitySuggestion {
 }
 
 export default function Onboarding() {
+  const { user, memberships, currentOrg, refreshMemberships } = useAuth();
+  const { allHotels, loading: hotelsLoading, refetch: refetchHotels } = useActiveHotel();
   const [orgName, setOrgName] = useState("");
   const [hotelName, setHotelName] = useState("");
   const [selectedCity, setSelectedCity] = useState<CitySuggestion | null>(null);
@@ -28,11 +31,63 @@ export default function Onboarding() {
   const [basePrice, setBasePrice] = useState("120");
   const [submitting, setSubmitting] = useState(false);
   const [loadingCities, setLoadingCities] = useState(false);
-  const { refreshMemberships } = useAuth();
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  // Check if user already has a hotel and redirect
+  useEffect(() => {
+    if (!hotelsLoading && allHotels.length > 0 && currentOrg) {
+      // User already has a hotel — set it active and redirect
+      const hotel = allHotels[0];
+      supabase.rpc("set_active_hotel", { _hotel_id: hotel.id }).then(() => {
+        navigate("/dashboard", { replace: true });
+      });
+    }
+  }, [hotelsLoading, allHotels, currentOrg, navigate]);
+
+  // Debug panel data fetch
+  const fetchDebugInfo = useCallback(async () => {
+    if (!user) return;
+    const uid = user.id;
+
+    const { data: settings } = await supabase
+      .from("user_settings")
+      .select("active_organization_id, active_hotel_id")
+      .eq("user_id", uid)
+      .maybeSingle();
+
+    const orgId = currentOrg?.organization_id || settings?.active_organization_id;
+
+    let hotelCount = 0;
+    if (orgId) {
+      const { data: hotels } = await supabase
+        .from("hotels")
+        .select("id")
+        .eq("organization_id", orgId);
+      hotelCount = hotels?.length || 0;
+    }
+
+    setDebugInfo({
+      uid,
+      activeOrgId: settings?.active_organization_id || "null",
+      activeHotelId: settings?.active_hotel_id || "null",
+      currentOrgFromContext: currentOrg?.organization_id || "null",
+      membershipCount: memberships.length,
+      hotelCountForOrg: hotelCount,
+      allHotelsFromHook: allHotels.length,
+      conditionNoMemberships: memberships.length === 0,
+      conditionNoHotels: allHotels.length === 0,
+      conditionNoCurrentOrg: !currentOrg,
+    });
+  }, [user, currentOrg, memberships, allHotels]);
+
+  useEffect(() => {
+    if (showDebug) fetchDebugInfo();
+  }, [showDebug, fetchDebugInfo]);
 
   // Close suggestions when clicking outside
   useEffect(() => {
@@ -75,10 +130,25 @@ export default function Onboarding() {
 
   const selectCity = (suggestion: CitySuggestion) => {
     setSelectedCity(suggestion);
-    // Display clean "City, Country" — never store this as the city value
     setCityQuery(suggestion.label);
     setShowSuggestions(false);
     setCitySuggestions([]);
+  };
+
+  // "Use existing hotel" one-click action
+  const handleUseExistingHotel = async () => {
+    if (allHotels.length === 0) return;
+    setSubmitting(true);
+    try {
+      await supabase.rpc("set_active_hotel", { _hotel_id: allHotels[0].id });
+      await refreshMemberships();
+      toast({ title: "Welcome back!", description: "Your existing hotel is now active." });
+      navigate("/dashboard", { replace: true });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -87,47 +157,42 @@ export default function Onboarding() {
 
     setSubmitting(true);
     try {
-      // Step 1: Create org (or get existing)
       const { data: orgId, error: orgError } = await supabase.rpc("create_org_and_owner", {
         _org_name: orgName.trim(),
       });
       if (orgError) throw orgError;
 
-      // Step 2: Check if org already has a hotel (MVP: single hotel per org)
+      // Check if org already has a hotel
       const { data: existingHotels } = await supabase
         .from("hotels")
         .select("id")
         .eq("organization_id", orgId);
 
       if (existingHotels && existingHotels.length > 0) {
-        // Hotel already exists — reuse it, don't create another
         await supabase.rpc("set_active_hotel", { _hotel_id: existingHotels[0].id });
         await refreshMemberships();
         toast({ title: "Welcome back!", description: "Your hotel is already set up." });
-        navigate("/dashboard");
+        navigate("/dashboard", { replace: true });
         return;
       }
 
-      // Step 3: Create hotel (DB function is also idempotent as a safety net)
       const { data: hotelId, error: hotelError } = await supabase.rpc("create_hotel_for_org", {
         _org_id: orgId,
         _name: hotelName.trim(),
-        _city: selectedCity.name, // Store just the city name, NOT the display label
+        _city: selectedCity.name,
         _rooms: parseInt(rooms) || 85,
         _base_price: parseFloat(basePrice) || 120,
       });
       if (hotelError) {
-        // Handle unique constraint violation gracefully
         if (hotelError.message?.includes("unique") || hotelError.message?.includes("duplicate")) {
           toast({ title: "This organization already has a hotel.", description: "Redirecting to dashboard.", variant: "destructive" });
           await refreshMemberships();
-          navigate("/dashboard");
+          navigate("/dashboard", { replace: true });
           return;
         }
         throw hotelError;
       }
 
-      // Step 4: Update with structured city data (separate fields, never the display label)
       await supabase
         .from("hotels")
         .update({
@@ -138,18 +203,20 @@ export default function Onboarding() {
         })
         .eq("id", hotelId);
 
-      // Step 5: Set as active hotel
       await supabase.rpc("set_active_hotel", { _hotel_id: hotelId });
       await refreshMemberships();
 
       toast({ title: "Welcome to RevPilot!", description: `${orgName} and ${hotelName} created.` });
-      navigate("/dashboard");
+      navigate("/dashboard", { replace: true });
     } catch (err: any) {
       toast({ title: "Setup failed", description: err.message, variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
   };
+
+  // If user already has hotels, show shortcut
+  const hasExistingHotel = !hotelsLoading && allHotels.length > 0;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -163,6 +230,42 @@ export default function Onboarding() {
           </div>
           <h1 className="mt-4 text-2xl font-bold">Set up your hotel</h1>
           <p className="mt-1 text-sm text-muted-foreground">Create your organization and first hotel to get started</p>
+        </div>
+
+        {/* "Use existing hotel" shortcut */}
+        {hasExistingHotel && (
+          <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 space-y-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-primary">
+              <CheckCircle className="h-4 w-4" />
+              You already have a hotel: {allHotels[0].name}
+            </div>
+            <Button onClick={handleUseExistingHotel} className="w-full" disabled={submitting}>
+              {submitting ? "Redirecting…" : "Use existing hotel → Dashboard"}
+            </Button>
+          </div>
+        )}
+
+        {/* Debug Panel */}
+        <div>
+          <Button variant="ghost" size="sm" onClick={() => setShowDebug(!showDebug)} className="gap-1.5 text-xs text-muted-foreground">
+            <Bug className="h-3 w-3" /> {showDebug ? "Hide" : "Show"} Debug Panel
+          </Button>
+          {showDebug && debugInfo && (
+            <div className="mt-2 rounded-lg border border-border bg-muted/30 p-3 text-xs font-mono space-y-1">
+              <div>auth.uid(): <span className="text-primary">{debugInfo.uid}</span></div>
+              <div>active_organization_id: <span className="text-primary">{debugInfo.activeOrgId}</span></div>
+              <div>currentOrg (context): <span className="text-primary">{debugInfo.currentOrgFromContext}</span></div>
+              <div>active_hotel_id: <span className="text-primary">{debugInfo.activeHotelId}</span></div>
+              <div>memberships count: <span className="text-primary">{debugInfo.membershipCount}</span></div>
+              <div>hotels for org (DB): <span className="text-primary">{debugInfo.hotelCountForOrg}</span></div>
+              <div>allHotels (hook): <span className="text-primary">{debugInfo.allHotelsFromHook}</span></div>
+              <hr className="border-border" />
+              <div className="font-bold">Onboarding triggers:</div>
+              <div>memberships === 0: <span className={debugInfo.conditionNoMemberships ? "text-destructive" : "text-success"}>{String(debugInfo.conditionNoMemberships)}</span></div>
+              <div>allHotels === 0: <span className={debugInfo.conditionNoHotels ? "text-destructive" : "text-success"}>{String(debugInfo.conditionNoHotels)}</span></div>
+              <div>currentOrg === null: <span className={debugInfo.conditionNoCurrentOrg ? "text-destructive" : "text-success"}>{String(debugInfo.conditionNoCurrentOrg)}</span></div>
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">

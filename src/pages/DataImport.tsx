@@ -2,10 +2,11 @@ import { useState, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
   BarChart3, ChevronLeft, Upload, FileText, AlertCircle, CheckCircle2,
-  X, ArrowRight, Download, Settings, Bell, LogOut,
+  X, ArrowRight, Download, Settings, Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import UserMenu from "@/components/UserMenu";
 
 // ─── Types ─────────────────────────────────────────────
 interface CSVRow {
@@ -309,7 +310,7 @@ export default function DataImport() {
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" className="h-8 w-8"><Bell className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" className="h-8 w-8"><Settings className="h-4 w-4" /></Button>
-            <Link to="/"><Button variant="ghost" size="icon" className="h-8 w-8"><LogOut className="h-4 w-4" /></Button></Link>
+            <UserMenu />
           </div>
         </div>
       </header>

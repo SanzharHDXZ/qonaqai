@@ -234,7 +234,16 @@ export default function Dashboard() {
   const alerts = useMemo(() => generateAlerts(forecasts), [forecasts]);
   const [selectedDay, setSelectedDay] = useState<DailyForecast | null>(null);
   const activeDay = selectedDay || forecasts[0];
-  const [manualPrice, setManualPrice] = useState(safeNum(activeDay?.recommendedPrice, 120));
+  const [manualPrice, setManualPrice] = useState<number | null>(null);
+
+  // Sync manualPrice when activeDay changes (e.g. forecasts load or day selection changes)
+  useEffect(() => {
+    if (activeDay?.recommendedPrice) {
+      setManualPrice(safeNum(activeDay.recommendedPrice, hotel.basePrice));
+    }
+  }, [activeDay?.recommendedPrice, activeDay?.dayLabel]);
+
+  const effectiveManualPrice = manualPrice ?? safeNum(activeDay?.recommendedPrice, hotel.basePrice);
   const [showExplain, setShowExplain] = useState(false);
   const [showBacktest, setShowBacktest] = useState(false);
 
@@ -263,10 +272,10 @@ export default function Dashboard() {
   const simulation = useMemo(() => simulateRevenue({
     totalRooms: hotel.rooms,
     predictedOccupancy: safeNum(activeDay?.predictedOccupancy, 72),
-    recommendedPrice: safeNum(activeDay?.recommendedPrice, 120),
+    recommendedPrice: safeNum(activeDay?.recommendedPrice, hotel.basePrice),
     staticPrice: safeNum(activeDay?.staticPrice, hotel.basePrice),
-    manualPrice,
-  }), [manualPrice, activeDay, hotel]);
+    manualPrice: effectiveManualPrice,
+  }), [effectiveManualPrice, activeDay, hotel]);
 
   const chartData = forecasts.map((f) => ({
     name: f.dayLabel,
@@ -620,7 +629,7 @@ export default function Dashboard() {
                     <tr
                       key={f.date}
                       className={`border-b border-border hover:bg-muted/30 cursor-pointer transition-colors ${activeDay?.date === f.date ? "bg-accent/50" : ""}`}
-                      onClick={() => { setSelectedDay(f); setManualPrice(safeNum(f.recommendedPrice, 120)); setShowExplain(false); }}
+                      onClick={() => { setSelectedDay(f); setManualPrice(safeNum(f.recommendedPrice, hotel.basePrice)); setShowExplain(false); }}
                     >
                       <td className="px-4 py-3 font-medium">{f.dayLabel}</td>
                       <td className="px-4 py-3 text-right">
@@ -657,7 +666,7 @@ export default function Dashboard() {
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedDay(f);
-                            setManualPrice(safeNum(f.recommendedPrice, 120));
+                            setManualPrice(safeNum(f.recommendedPrice, hotel.basePrice));
                             setShowExplain(true);
                           }}
                         >
@@ -752,12 +761,12 @@ export default function Dashboard() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-muted-foreground">Manual Price</span>
-                  <span className="text-lg font-bold">{formatPrice(manualPrice, hotel.currency)}</span>
+                  <span className="text-lg font-bold">{formatPrice(effectiveManualPrice, hotel.currency)}</span>
                 </div>
                 {activeDay && (
                   <>
                     <Slider
-                      value={[manualPrice]}
+                      value={[effectiveManualPrice]}
                       onValueChange={([v]) => setManualPrice(v)}
                       min={safeNum(activeDay.minPrice, 50)}
                       max={safeNum(activeDay.maxPrice, 500)}

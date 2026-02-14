@@ -6,6 +6,10 @@ export interface HotelProfile {
   id: string;
   name: string;
   city: string;
+  city_name: string | null;
+  country_code: string | null;
+  latitude: number | null;
+  longitude: number | null;
   rooms: number;
   base_price: number;
   currency: string;
@@ -30,7 +34,7 @@ export function useActiveHotel() {
     // Fetch all hotels for the current org
     const { data: hotels, error } = await supabase
       .from("hotels")
-      .select("id, name, city, rooms, base_price, currency, avg_occupancy, organization_id")
+      .select("id, name, city, city_name, country_code, latitude, longitude, rooms, base_price, currency, avg_occupancy, organization_id")
       .eq("organization_id", currentOrg.organization_id);
 
     if (error || !hotels || hotels.length === 0) {

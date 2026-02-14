@@ -174,16 +174,19 @@ export default function Dashboard() {
 
   // Fetch real weather and event data
   useEffect(() => {
-    if (!activeHotel?.city) return;
-    const city = activeHotel.city;
+    if (!activeHotel) return;
+    const city = activeHotel.city_name || activeHotel.city;
+    if (!city) return;
     const warnings: string[] = [];
+    const geoOpts = { lat: activeHotel.latitude, lon: activeHotel.longitude };
+    const eventOpts = { countryCode: activeHotel.country_code, lat: activeHotel.latitude, lon: activeHotel.longitude };
 
     Promise.all([
-      fetchWeatherData(city).then((result) => {
+      fetchWeatherData(city, geoOpts).then((result) => {
         setWeatherData(result.data);
         if (!result.available) warnings.push("Weather data unavailable");
       }),
-      fetchEventData(city).then((result) => {
+      fetchEventData(city, eventOpts).then((result) => {
         setEventData(result.data);
         if (!result.available) warnings.push("Events data unavailable");
         if (result.available && result.data.length === 0) {
@@ -191,7 +194,7 @@ export default function Dashboard() {
         }
       }),
     ]).then(() => setApiWarnings(warnings));
-  }, [activeHotel?.city]);
+  }, [activeHotel?.id]);
 
   // Derive hotel profile from active hotel (real DB data)
   const hotel = useMemo(() => {

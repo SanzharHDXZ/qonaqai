@@ -12,13 +12,15 @@ interface CitySuggestion {
   name: string;
   country: string;
   state: string | null;
+  lat: number;
+  lon: number;
   label: string;
 }
 
 export default function Onboarding() {
   const [orgName, setOrgName] = useState("");
   const [hotelName, setHotelName] = useState("");
-  const [city, setCity] = useState("");
+  const [selectedCity, setSelectedCity] = useState<CitySuggestion | null>(null);
   const [cityQuery, setCityQuery] = useState("");
   const [citySuggestions, setCitySuggestions] = useState<CitySuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -66,13 +68,13 @@ export default function Onboarding() {
 
   const handleCityInput = (value: string) => {
     setCityQuery(value);
-    setCity(""); // Clear selected city when typing
+    setSelectedCity(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => fetchCitySuggestions(value), 300);
   };
 
   const selectCity = (suggestion: CitySuggestion) => {
-    setCity(suggestion.name);
+    setSelectedCity(suggestion);
     setCityQuery(suggestion.label);
     setShowSuggestions(false);
     setCitySuggestions([]);
@@ -80,7 +82,7 @@ export default function Onboarding() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!orgName.trim() || !hotelName.trim() || !city.trim()) return;
+    if (!orgName.trim() || !hotelName.trim() || !selectedCity) return;
 
     setSubmitting(true);
     try {
@@ -89,14 +91,40 @@ export default function Onboarding() {
       });
       if (orgError) throw orgError;
 
-      const { error: hotelError } = await supabase.rpc("create_hotel_for_org", {
+      // MVP guard: check if org already has a hotel
+      const { data: existingHotels } = await supabase
+        .from("hotels")
+        .select("id")
+        .eq("organization_id", orgId);
+
+      if (existingHotels && existingHotels.length > 0) {
+        // Hotel already exists, just set it active and go
+        await supabase.rpc("set_active_hotel", { _hotel_id: existingHotels[0].id });
+        await refreshMemberships();
+        toast({ title: "Welcome back!", description: "Your hotel is already set up." });
+        navigate("/dashboard");
+        return;
+      }
+
+      const { data: hotelId, error: hotelError } = await supabase.rpc("create_hotel_for_org", {
         _org_id: orgId,
         _name: hotelName.trim(),
-        _city: city.trim(),
+        _city: selectedCity.name,
         _rooms: parseInt(rooms) || 85,
         _base_price: parseFloat(basePrice) || 120,
       });
       if (hotelError) throw hotelError;
+
+      // Update hotel with structured city data
+      await supabase
+        .from("hotels")
+        .update({
+          city_name: selectedCity.name,
+          country_code: selectedCity.country,
+          latitude: selectedCity.lat,
+          longitude: selectedCity.lon,
+        })
+        .eq("id", hotelId);
 
       await refreshMemberships();
 
@@ -142,41 +170,42 @@ export default function Onboarding() {
               <Label htmlFor="hotelName">Hotel Name</Label>
               <Input id="hotelName" value={hotelName} onChange={(e) => setHotelName(e.target.value)} placeholder="Grand Hotel Barcelona" required />
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2 relative col-span-1" ref={suggestionsRef}>
-                <Label htmlFor="city">City</Label>
-                <div className="relative">
-                  <Input
-                    id="city"
-                    value={cityQuery}
-                    onChange={(e) => handleCityInput(e.target.value)}
-                    onFocus={() => citySuggestions.length > 0 && setShowSuggestions(true)}
-                    placeholder="Search city…"
-                    required
-                    autoComplete="off"
-                  />
-                  {loadingCities && (
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                    </div>
-                  )}
-                </div>
-                {showSuggestions && citySuggestions.length > 0 && (
-                  <div className="absolute z-50 top-full mt-1 w-full max-w-[280px] rounded-lg border border-border bg-card shadow-lg overflow-hidden">
-                    {citySuggestions.map((s, i) => (
-                      <button
-                        key={`${s.name}-${s.country}-${i}`}
-                        type="button"
-                        onClick={() => selectCity(s)}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
-                      >
-                        <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <span className="truncate">{s.label}</span>
-                      </button>
-                    ))}
+            <div className="space-y-2 relative" ref={suggestionsRef}>
+              <Label htmlFor="city">City</Label>
+              <div className="relative">
+                <Input
+                  id="city"
+                  value={cityQuery}
+                  onChange={(e) => handleCityInput(e.target.value)}
+                  onFocus={() => citySuggestions.length > 0 && setShowSuggestions(true)}
+                  placeholder="Search city…"
+                  required
+                  autoComplete="off"
+                />
+                {loadingCities && (
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                   </div>
                 )}
               </div>
+              {showSuggestions && citySuggestions.length > 0 && (
+                <div className="absolute z-50 top-full mt-1 w-full rounded-lg border border-border bg-card shadow-lg overflow-hidden">
+                  {citySuggestions.map((s, i) => (
+                    <button
+                      key={`${s.name}-${s.country}-${i}`}
+                      type="button"
+                      onClick={() => selectCity(s)}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-accent transition-colors"
+                      title={s.label}
+                    >
+                      <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="truncate">{s.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="rooms">Rooms</Label>
                 <Input id="rooms" type="number" value={rooms} onChange={(e) => setRooms(e.target.value)} />
@@ -188,7 +217,7 @@ export default function Onboarding() {
             </div>
           </div>
 
-          <Button type="submit" className="w-full" disabled={submitting || !city}>
+          <Button type="submit" className="w-full" disabled={submitting || !selectedCity}>
             {submitting ? "Setting up…" : "Launch RevPilot"} <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </form>

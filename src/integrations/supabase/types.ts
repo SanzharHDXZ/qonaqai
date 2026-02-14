@@ -166,6 +166,8 @@ export type Database = {
           avg_occupancy: number
           base_price: number
           city: string
+          city_name: string | null
+          country_code: string | null
           created_at: string
           currency: string
           id: string
@@ -181,6 +183,8 @@ export type Database = {
           avg_occupancy?: number
           base_price?: number
           city?: string
+          city_name?: string | null
+          country_code?: string | null
           created_at?: string
           currency?: string
           id?: string
@@ -196,6 +200,8 @@ export type Database = {
           avg_occupancy?: number
           base_price?: number
           city?: string
+          city_name?: string | null
+          country_code?: string | null
           created_at?: string
           currency?: string
           id?: string
@@ -211,7 +217,7 @@ export type Database = {
           {
             foreignKeyName: "hotels_organization_id_fkey"
             columns: ["organization_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import {
   BarChart3, TrendingUp, Percent, DollarSign, AlertTriangle, Building2,
   SlidersHorizontal, ArrowUpRight, ArrowDownRight, Bell, Calendar, Zap,
-  ChevronLeft, Settings, LogOut, Info, Database, FlaskConical, Target,
+  ChevronLeft, Settings, Info, Database, FlaskConical, Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -15,6 +15,7 @@ import {
 import { generateForecasts, generateAlerts, computeKPIs, competitors, hotelProfile, type DailyForecast, type Alert } from "@/data/mockData";
 import { simulateRevenue, runBacktest, getStoredHistoricalData, computeHistoricalStats, calculateForecastAccuracy, buildForecastRecords } from "@/pricing-engine";
 import ExplainPrice from "@/components/ExplainPrice";
+import UserMenu from "@/components/UserMenu";
 
 // ─── KPI Card ──────────────────────────────────────────
 function KPICard({ title, value, sub, icon: Icon, trend }: {
@@ -180,7 +181,7 @@ export default function Dashboard() {
             </Link>
             <Button variant="ghost" size="icon" className="h-8 w-8"><Bell className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" className="h-8 w-8"><Settings className="h-4 w-4" /></Button>
-            <Link to="/"><Button variant="ghost" size="icon" className="h-8 w-8"><LogOut className="h-4 w-4" /></Button></Link>
+            <UserMenu />
           </div>
         </div>
       </header>

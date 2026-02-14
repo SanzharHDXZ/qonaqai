@@ -4,32 +4,48 @@ import { ArrowRight, BarChart3, Brain, TrendingUp, Shield, Zap, Building2, Chevr
 import { Button } from "@/components/ui/button";
 import { getStoredHistoricalData, computeHistoricalStats } from "@/pricing-engine";
 import { generateForecasts, computeKPIs, hotelProfile } from "@/data/mockData";
+import { useAuth } from "@/contexts/AuthContext";
+import UserMenu from "@/components/UserMenu";
 
-const Navbar = () => (
-  <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
-    <div className="container mx-auto flex h-16 items-center justify-between px-6">
-      <Link to="/" className="flex items-center gap-2 font-semibold text-lg">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-          <BarChart3 className="h-4 w-4 text-primary-foreground" />
+const Navbar = () => {
+  const { user } = useAuth();
+  return (
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
+      <div className="container mx-auto flex h-16 items-center justify-between px-6">
+        <Link to="/" className="flex items-center gap-2 font-semibold text-lg">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+            <BarChart3 className="h-4 w-4 text-primary-foreground" />
+          </div>
+          RevPilot
+        </Link>
+        <div className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
+          <a href="#features" className="hover:text-foreground transition-colors">Features</a>
+          <a href="#roi" className="hover:text-foreground transition-colors">ROI</a>
+          <Link to="/pricing" className="hover:text-foreground transition-colors">Pricing</Link>
         </div>
-        RevPilot
-      </Link>
-      <div className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
-        <a href="#features" className="hover:text-foreground transition-colors">Features</a>
-        <a href="#roi" className="hover:text-foreground transition-colors">ROI</a>
-        <Link to="/pricing" className="hover:text-foreground transition-colors">Pricing</Link>
+        <div className="flex items-center gap-3">
+          {user ? (
+            <>
+              <Link to="/dashboard">
+                <Button size="sm">Dashboard <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Button>
+              </Link>
+              <UserMenu />
+            </>
+          ) : (
+            <>
+              <Link to="/login">
+                <Button variant="ghost" size="sm">Log in</Button>
+              </Link>
+              <Link to="/signup">
+                <Button size="sm">Start Free Trial <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Button>
+              </Link>
+            </>
+          )}
+        </div>
       </div>
-      <div className="flex items-center gap-3">
-        <Link to="/dashboard">
-          <Button variant="ghost" size="sm">Log in</Button>
-        </Link>
-        <Link to="/dashboard">
-          <Button size="sm">Start Free Trial <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Button>
-        </Link>
-      </div>
-    </div>
-  </nav>
-);
+    </nav>
+  );
+};
 
 const features = [
   {
@@ -87,6 +103,7 @@ const tiers = [
 ];
 
 export default function Landing() {
+  const { user } = useAuth();
   // Compute dynamic stats from real data when available
   const dynamicStats = useMemo(() => {
     const historicalData = getStoredHistoricalData();
@@ -144,9 +161,9 @@ export default function Landing() {
               }
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <Link to="/dashboard">
+              <Link to={user ? "/dashboard" : "/signup"}>
                 <Button size="lg" className="px-8">
-                  Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+                  {user ? "Go to Dashboard" : "Start Free Trial"} <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
               <Link to="/data-import">

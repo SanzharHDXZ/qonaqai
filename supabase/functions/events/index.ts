@@ -12,7 +12,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { city } = await req.json();
+    const body = await req.json();
+    const { city, countryCode, lat, lon } = body;
     if (!city) {
       return new Response(JSON.stringify({ error: "city is required" }), {
         status: 400,
@@ -40,7 +41,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch from Ticketmaster Discovery API
     const apiKey = Deno.env.get("TICKETMASTER_API_KEY");
     if (!apiKey) {
       console.error("[events] TICKETMASTER_API_KEY not configured");
@@ -54,7 +54,22 @@ Deno.serve(async (req) => {
     const startDate = now.toISOString().split(".")[0] + "Z";
     const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split(".")[0] + "Z";
 
-    const tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&city=${encodeURIComponent(city.trim())}&startDateTime=${startDate}&endDateTime=${endDate}&size=50&sort=date,asc`;
+    // Build query: prefer lat/lon (geoPoint) for accuracy, fall back to city name
+    let locationParam: string;
+    if (lat != null && lon != null) {
+      // Ticketmaster geoPoint: latlong=lat,lon with radius
+      locationParam = `latlong=${lat},${lon}&radius=50&unit=km`;
+      console.log("[events] Using lat/lon:", lat, lon);
+    } else {
+      // Use city keyword; also pass countryCode if available
+      locationParam = `keyword=${encodeURIComponent(city.trim())}`;
+      if (countryCode) {
+        locationParam += `&countryCode=${encodeURIComponent(countryCode)}`;
+      }
+      console.log("[events] Using city keyword:", city.trim(), "countryCode:", countryCode || "none");
+    }
+
+    const tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&${locationParam}&startDateTime=${startDate}&endDateTime=${endDate}&size=50&sort=date,asc`;
     console.log("[events] Request URL:", tmUrl.replace(apiKey, "***"));
     
     const tmRes = await fetch(tmUrl);
@@ -75,9 +90,11 @@ Deno.serve(async (req) => {
     console.log("[events] Found", events.length, "events for city:", city.trim());
     if (events.length === 0) {
       console.warn("[events] No events found for city:", city.trim(), "date range:", startDate, "to", endDate);
+      return new Response(JSON.stringify({ source: "api", data: [], message: `No events found for ${city.trim()} in the next 30 days` }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Map Ticketmaster classifications to our categories
     const classificationMap: Record<string, string> = {
       Music: "concert",
       Sports: "sports",
@@ -109,7 +126,7 @@ Deno.serve(async (req) => {
       };
     });
 
-    // Clear old cache for this city and insert new
+    // Clear old cache and insert new
     if (rows.length > 0) {
       await supabase
         .from("event_cache")

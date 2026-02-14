@@ -12,15 +12,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { city } = await req.json();
-    if (!city) {
-      return new Response(JSON.stringify({ error: "city is required" }), {
+    const body = await req.json();
+    const { city, lat, lon } = body;
+    if (!city && (lat == null || lon == null)) {
+      return new Response(JSON.stringify({ error: "city or lat/lon is required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const normalizedCity = city.trim().toLowerCase();
+    const cacheKey = lat != null && lon != null ? `${lat.toFixed(2)},${lon.toFixed(2)}` : city.trim().toLowerCase();
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -30,18 +31,17 @@ Deno.serve(async (req) => {
     const { data: cached } = await supabase
       .from("weather_cache")
       .select("*")
-      .eq("city", normalizedCity)
+      .eq("city", cacheKey)
       .gte("fetched_at", sixHoursAgo)
       .order("date", { ascending: true });
 
     if (cached && cached.length > 0) {
-      console.log("[weather] Cache hit for:", normalizedCity, "rows:", cached.length);
+      console.log("[weather] Cache hit for:", cacheKey, "rows:", cached.length);
       return new Response(JSON.stringify({ source: "cache", data: cached }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Fetch from OpenWeather 5-day forecast
     const apiKey = Deno.env.get("OPENWEATHER_API_KEY");
     if (!apiKey) {
       console.error("[weather] OPENWEATHER_API_KEY not configured");
@@ -51,7 +51,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    const weatherUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${encodeURIComponent(city.trim())}&units=metric&appid=${apiKey}`;
+    // Prefer lat/lon for accuracy, fall back to city name
+    const queryParam = lat != null && lon != null
+      ? `lat=${lat}&lon=${lon}`
+      : `q=${encodeURIComponent(city.trim())}`;
+
+    const weatherUrl = `https://api.openweathermap.org/data/2.5/forecast?${queryParam}&units=metric&appid=${apiKey}`;
     console.log("[weather] Request URL:", weatherUrl.replace(apiKey, "***"));
     
     const weatherRes = await fetch(weatherUrl);
@@ -91,7 +96,7 @@ Deno.serve(async (req) => {
       const condition = [...condCount.entries()].sort((a, b) => b[1] - a[1])[0][0];
 
       rows.push({
-        city: normalizedCity,
+        city: cacheKey,
         date,
         temperature: avgTemp,
         rain_probability: avgRain,
@@ -99,9 +104,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log("[weather] Fetched", rows.length, "daily forecasts for", normalizedCity);
+    console.log("[weather] Fetched", rows.length, "daily forecasts for", cacheKey);
 
-    // Upsert into cache
     if (rows.length > 0) {
       const { error: upsertErr } = await supabase
         .from("weather_cache")

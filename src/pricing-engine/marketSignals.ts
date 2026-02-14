@@ -77,17 +77,23 @@ function setMemCache<T>(key: string, data: T): void {
 
 // ─── Weather (Real API via Edge Function) ──────────────
 
-export async function fetchWeatherData(city: string): Promise<{ data: WeatherData[]; available: boolean }> {
-  if (!city) return { data: [], available: false };
+export async function fetchWeatherData(
+  city: string,
+  options?: { lat?: number | null; lon?: number | null }
+): Promise<{ data: WeatherData[]; available: boolean }> {
+  if (!city && (options?.lat == null || options?.lon == null)) return { data: [], available: false };
 
-  const cacheKey = `weather:${city.toLowerCase()}`;
+  const cacheKey = options?.lat != null ? `weather:${options.lat.toFixed(2)},${options.lon!.toFixed(2)}` : `weather:${city.toLowerCase()}`;
   const cached = getMemCached<WeatherData[]>(cacheKey);
   if (cached) return { data: cached, available: true };
 
   try {
-    const { data, error } = await supabase.functions.invoke("weather", {
-      body: { city },
-    });
+    const body: Record<string, unknown> = { city };
+    if (options?.lat != null && options?.lon != null) {
+      body.lat = options.lat;
+      body.lon = options.lon;
+    }
+    const { data, error } = await supabase.functions.invoke("weather", { body });
 
     if (error || !data?.data || data.data.length === 0) {
       console.warn("Weather API unavailable:", error?.message || data?.error);
@@ -133,7 +139,10 @@ export function computeWeatherImpact(weather: WeatherData | undefined, date: Dat
 
 // ─── Events (Real API via Edge Function) ───────────────
 
-export async function fetchEventData(city: string): Promise<{ data: LocalEvent[]; available: boolean }> {
+export async function fetchEventData(
+  city: string,
+  options?: { countryCode?: string | null; lat?: number | null; lon?: number | null }
+): Promise<{ data: LocalEvent[]; available: boolean }> {
   if (!city) return { data: [], available: false };
 
   const cacheKey = `events:${city.toLowerCase()}`;
@@ -141,13 +150,17 @@ export async function fetchEventData(city: string): Promise<{ data: LocalEvent[]
   if (cached) return { data: cached, available: true };
 
   try {
-    const { data, error } = await supabase.functions.invoke("events", {
-      body: { city },
-    });
+    const body: Record<string, unknown> = { city };
+    if (options?.countryCode) body.countryCode = options.countryCode;
+    if (options?.lat != null && options?.lon != null) {
+      body.lat = options.lat;
+      body.lon = options.lon;
+    }
+    const { data, error } = await supabase.functions.invoke("events", { body });
 
     if (error || !data?.data || data.data.length === 0) {
-      console.warn("Events API unavailable:", error?.message || data?.error);
-      return { data: [], available: false };
+      console.warn("Events API unavailable:", error?.message || data?.error, data?.message || "");
+      return { data: [], available: data?.data?.length === 0 };
     }
 
     const events: LocalEvent[] = data.data.map((d: any) => ({

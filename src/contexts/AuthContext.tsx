@@ -50,10 +50,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }));
 
     setMemberships(mapped);
-    if (mapped.length > 0 && !currentOrg) {
-      setCurrentOrg(mapped[0]);
+
+    // Try to restore the user's previously active org from user_settings
+    if (mapped.length > 0) {
+      const { data: settings } = await supabase
+        .from("user_settings")
+        .select("active_organization_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      const savedOrgId = settings?.active_organization_id;
+      const savedOrg = savedOrgId ? mapped.find(m => m.organization_id === savedOrgId) : null;
+      setCurrentOrg(savedOrg || mapped[0]);
     }
-  }, [currentOrg]);
+  }, []);
 
   useEffect(() => {
     // Set up auth listener FIRST
@@ -62,7 +72,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
-          // Use setTimeout to avoid potential deadlock with Supabase auth
           setTimeout(() => fetchMemberships(session.user.id), 0);
         } else {
           setMemberships([]);

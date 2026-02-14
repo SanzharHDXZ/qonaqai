@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
 
   try {
     const { query } = await req.json();
-    if (!query || query.length < 2) {
+    if (!query || query.trim().length < 2) {
       return new Response(JSON.stringify({ suggestions: [] }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -19,18 +19,23 @@ Deno.serve(async (req) => {
 
     const apiKey = Deno.env.get("OPENWEATHER_API_KEY");
     if (!apiKey) {
+      console.error("[geocode] OPENWEATHER_API_KEY not configured");
       return new Response(
         JSON.stringify({ error: "OPENWEATHER_API_KEY not configured", suggestions: [] }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(query)}&limit=5&appid=${apiKey}`;
+    const normalizedQuery = query.trim();
+    const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(normalizedQuery)}&limit=5&appid=${apiKey}`;
+    console.log("[geocode] Request URL:", geoUrl.replace(apiKey, "***"));
+    
     const geoRes = await fetch(geoUrl);
+    console.log("[geocode] Response status:", geoRes.status);
 
     if (!geoRes.ok) {
       const errText = await geoRes.text();
-      console.error("Geocoding API error:", errText);
+      console.error("[geocode] API error:", errText);
       return new Response(
         JSON.stringify({ error: "Geocoding failed", suggestions: [] }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -38,6 +43,8 @@ Deno.serve(async (req) => {
     }
 
     const geoData = await geoRes.json();
+    console.log("[geocode] Results count:", geoData.length);
+    
     const suggestions = geoData.map((item: any) => ({
       name: item.name,
       country: item.country,
@@ -53,7 +60,7 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("Geocode function error:", err);
+    console.error("[geocode] Function error:", err);
     return new Response(
       JSON.stringify({ error: err.message, suggestions: [] }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

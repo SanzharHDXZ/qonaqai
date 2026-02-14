@@ -199,24 +199,7 @@ export function calculateDemandScore(
     w.eventStrength * eventScore +
     w.bookingPace * bookingPaceScore;
 
-  // ─── Normalize around 50 to prevent upward bias ───
-  // The weighted base naturally centers around baseOccupancy (e.g., 72%).
-  // Without normalization, demand always reads "high" → constant premium pricing.
-  // We re-center: 50 + (raw - historicalCenter) + external signals.
-  const historicalCenter = config.baseOccupancy * 100; // e.g., 72
-  const normalizedBase = 50 + (baseWeighted - historicalCenter);
-  
-  const demandScore = Math.max(0, Math.min(100, Math.round(normalizedBase + externalSignalScore)));
-
-  // Debug logging for pricing diagnostics
-  console.log("[DemandModel]", {
-    date: date.toISOString().slice(0, 10),
-    baseWeighted: Math.round(baseWeighted * 10) / 10,
-    historicalCenter,
-    normalizedBase: Math.round(normalizedBase * 10) / 10,
-    externalSignalScore,
-    finalDemandScore: demandScore,
-  });
+  const demandScore = Math.max(0, Math.min(100, Math.round(baseWeighted + externalSignalScore)));
 
   return {
     demandScore,

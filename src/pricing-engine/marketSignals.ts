@@ -133,36 +133,22 @@ export function computeWeatherImpact(weather: WeatherData | undefined, date: Dat
 
 // ─── Events (Real API via Edge Function) ───────────────
 
-export async function fetchEventData(
-  city: string,
-  lat?: number | null,
-  lon?: number | null
-): Promise<{ data: LocalEvent[]; available: boolean }> {
-  if (!city && !lat) return { data: [], available: false };
+export async function fetchEventData(city: string): Promise<{ data: LocalEvent[]; available: boolean }> {
+  if (!city) return { data: [], available: false };
 
-  const cacheKey = `events:${lat && lon ? `${lat},${lon}` : city.toLowerCase()}`;
+  const cacheKey = `events:${city.toLowerCase()}`;
   const cached = getMemCached<LocalEvent[]>(cacheKey);
   if (cached) return { data: cached, available: true };
 
   try {
-    const body: Record<string, unknown> = { city };
-    if (lat != null && lon != null) {
-      body.lat = lat;
-      body.lon = lon;
-    }
-
-    const { data, error } = await supabase.functions.invoke("events", { body });
+    const { data, error } = await supabase.functions.invoke("events", {
+      body: { city },
+    });
 
     if (error || !data?.data || data.data.length === 0) {
-      const reason = error?.message || data?.error || "empty response";
-      console.warn("[Events API] No events returned:", reason, "city:", city, "lat:", lat, "lon:", lon);
-      if (data?.count === 0) {
-        console.warn("[Events API] No events returned by API for selected range.");
-      }
-      return { data: [], available: !error };
+      console.warn("Events API unavailable:", error?.message || data?.error);
+      return { data: [], available: false };
     }
-
-    console.log("[Events API] Fetched", data.data.length, "events for", city);
 
     const events: LocalEvent[] = data.data.map((d: any) => ({
       name: d.name,

@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
 import {
   ChevronLeft, Upload, FileText, AlertCircle, CheckCircle2,
@@ -257,22 +258,48 @@ export default function DataImport() {
     if (!validationResult || validationResult.records.length === 0) return;
     setIsSaving(true);
 
-    // For now (before auth), store in localStorage as a pilot-ready data store
-    // Once auth is added, this will be replaced with Supabase insert
     try {
-      const existingData = localStorage.getItem("qonaqai_historical_data");
-      const existing: ParsedRecord[] = existingData ? JSON.parse(existingData) : [];
-      
-      // Merge: overwrite existing dates, add new ones
-      const dateMap = new Map(existing.map(r => [r.date, r]));
-      for (const rec of validationResult.records) {
-        dateMap.set(rec.date, rec);
+      // Get active hotel ID from user_settings
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data: settings } = await supabase
+        .from("user_settings")
+        .select("active_hotel_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const hotelId = settings?.active_hotel_id;
+      if (!hotelId) throw new Error("No active hotel selected. Please set up your hotel first.");
+
+      // Upsert records into historical_data (delete existing dates first, then insert)
+      const dates = validationResult.records.map(r => r.date);
+      await supabase
+        .from("historical_data")
+        .delete()
+        .eq("hotel_id", hotelId)
+        .in("date", dates);
+
+      // Insert in batches of 500
+      const rows = validationResult.records.map(r => ({
+        hotel_id: hotelId,
+        date: r.date,
+        rooms_available: r.rooms_available,
+        rooms_sold: r.rooms_sold,
+        average_daily_rate: r.average_daily_rate,
+        cancellations: r.cancellations,
+        occupancy_rate: r.rooms_available > 0 ? r.rooms_sold / r.rooms_available : 0,
+      }));
+
+      const batchSize = 500;
+      for (let i = 0; i < rows.length; i += batchSize) {
+        const batch = rows.slice(i, i + batchSize);
+        const { error } = await supabase.from("historical_data").insert(batch);
+        if (error) throw new Error(`Insert failed: ${error.message}`);
       }
-      const merged = [...dateMap.values()].sort((a, b) => a.date.localeCompare(b.date));
-      localStorage.setItem("qonaqai_historical_data", JSON.stringify(merged));
-      
+
       setStep("complete");
-      toast({ title: "Data imported!", description: `${validationResult.records.length} records saved. ${merged.length} total records.` });
+      toast({ title: "Data imported!", description: `${validationResult.records.length} records saved to database.` });
     } catch (err) {
       toast({ title: "Save failed", description: String(err), variant: "destructive" });
     } finally {

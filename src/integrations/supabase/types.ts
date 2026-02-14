@@ -52,6 +52,41 @@ export type Database = {
           },
         ]
       }
+      competitor_rates: {
+        Row: {
+          competitor_name: string
+          created_at: string
+          date: string
+          hotel_id: string
+          id: string
+          price: number
+        }
+        Insert: {
+          competitor_name: string
+          created_at?: string
+          date: string
+          hotel_id: string
+          id?: string
+          price: number
+        }
+        Update: {
+          competitor_name?: string
+          created_at?: string
+          date?: string
+          hotel_id?: string
+          id?: string
+          price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "competitor_rates_hotel_id_fkey"
+            columns: ["hotel_id"]
+            isOneToOne: false
+            referencedRelation: "hotels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       historical_data: {
         Row: {
           average_daily_rate: number

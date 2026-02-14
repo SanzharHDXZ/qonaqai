@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, BarChart3, Building2, Hotel, Save, SlidersHorizontal } from "lucide-react";
+import { ChevronLeft, BarChart3, Building2, Hotel, Save, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useActiveHotel } from "@/hooks/useActiveHotel";
 import { useToast } from "@/hooks/use-toast";
 import UserMenu from "@/components/UserMenu";
+
+interface CompetitorEntry {
+  id?: string;
+  competitor_name: string;
+  price: string;
+  date: string;
+}
 
 export default function Settings() {
   const { currentOrg } = useAuth();
@@ -22,6 +29,9 @@ export default function Settings() {
   const [city, setCity] = useState("");
   const [rooms, setRooms] = useState("");
   const [basePrice, setBasePrice] = useState("");
+  // Competitor rates
+  const [competitors, setCompetitors] = useState<CompetitorEntry[]>([]);
+  const [newComp, setNewComp] = useState<CompetitorEntry>({ competitor_name: "", price: "", date: "" });
 
   const [saving, setSaving] = useState(false);
 
@@ -35,6 +45,24 @@ export default function Settings() {
       setCity(activeHotel.city);
       setRooms(String(activeHotel.rooms));
       setBasePrice(String(activeHotel.base_price));
+      // Fetch competitors
+      supabase
+        .from("competitor_rates")
+        .select("*")
+        .eq("hotel_id", activeHotel.id)
+        .order("date", { ascending: true })
+        .then(({ data }) => {
+          if (data) {
+            setCompetitors(
+              data.map((d) => ({
+                id: d.id,
+                competitor_name: d.competitor_name,
+                price: String(d.price),
+                date: d.date,
+              }))
+            );
+          }
+        });
     }
   }, [activeHotel]);
 
@@ -45,7 +73,6 @@ export default function Settings() {
     setSaving(true);
 
     try {
-      // Update org name (owner only)
       if (currentOrg.role === "owner" && orgName.trim() !== currentOrg.organization_name) {
         const { error } = await supabase
           .from("organizations")
@@ -54,7 +81,6 @@ export default function Settings() {
         if (error) throw error;
       }
 
-      // Update hotel
       const { error: hotelError } = await supabase
         .from("hotels")
         .update({
@@ -73,6 +99,39 @@ export default function Settings() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleAddCompetitor = async () => {
+    if (!activeHotel || !newComp.competitor_name.trim() || !newComp.price || !newComp.date) return;
+    const { data, error } = await supabase
+      .from("competitor_rates")
+      .insert({
+        hotel_id: activeHotel.id,
+        competitor_name: newComp.competitor_name.trim(),
+        price: parseFloat(newComp.price),
+        date: newComp.date,
+      })
+      .select()
+      .single();
+    if (error) {
+      toast({ title: "Failed to add", description: error.message, variant: "destructive" });
+      return;
+    }
+    setCompetitors((prev) => [
+      ...prev,
+      { id: data.id, competitor_name: data.competitor_name, price: String(data.price), date: data.date },
+    ]);
+    setNewComp({ competitor_name: "", price: "", date: "" });
+    toast({ title: "Competitor added" });
+  };
+
+  const handleDeleteCompetitor = async (id: string) => {
+    const { error } = await supabase.from("competitor_rates").delete().eq("id", id);
+    if (error) {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    setCompetitors((prev) => prev.filter((c) => c.id !== id));
   };
 
   return (
@@ -145,6 +204,74 @@ export default function Settings() {
             </>
           ) : (
             <p className="text-sm text-muted-foreground">No hotel selected.</p>
+          )}
+        </div>
+
+        {/* Competitor Rates */}
+        <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Building2 className="h-4 w-4 text-primary" /> Competitor Rates
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Add competitor pricing to improve demand forecasting. These feed into the External Market Signals layer.
+          </p>
+
+          {/* Existing competitors */}
+          {competitors.length > 0 && (
+            <div className="space-y-2">
+              {competitors.map((c) => (
+                <div key={c.id} className="flex items-center justify-between rounded-lg border border-border p-3">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium">{c.competitor_name}</span>
+                    <span className="text-xs text-muted-foreground ml-2">€{c.price} · {c.date}</span>
+                  </div>
+                  {canEdit && c.id && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive"
+                      onClick={() => handleDeleteCompetitor(c.id!)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add new */}
+          {canEdit && (
+            <div className="grid grid-cols-4 gap-2 items-end">
+              <div className="space-y-1">
+                <Label className="text-xs">Name</Label>
+                <Input
+                  placeholder="Hotel name"
+                  value={newComp.competitor_name}
+                  onChange={(e) => setNewComp((p) => ({ ...p, competitor_name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Rate (€)</Label>
+                <Input
+                  type="number"
+                  placeholder="150"
+                  value={newComp.price}
+                  onChange={(e) => setNewComp((p) => ({ ...p, price: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Date</Label>
+                <Input
+                  type="date"
+                  value={newComp.date}
+                  onChange={(e) => setNewComp((p) => ({ ...p, date: e.target.value }))}
+                />
+              </div>
+              <Button onClick={handleAddCompetitor} size="sm" className="gap-1">
+                <Plus className="h-3.5 w-3.5" /> Add
+              </Button>
+            </div>
           )}
         </div>
 

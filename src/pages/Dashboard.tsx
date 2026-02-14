@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
 import {
   BarChart3, TrendingUp, Percent, DollarSign, AlertTriangle, Building2,
@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import { generateForecasts, generateAlerts, computeKPIs, competitors, type DailyForecast, type Alert } from "@/data/mockData";
 import { simulateRevenue, runBacktest, computeHistoricalStats, calculateForecastAccuracy, buildForecastRecords } from "@/pricing-engine";
+import type { CompetitorRate } from "@/pricing-engine";
 import ExplainPrice from "@/components/ExplainPrice";
 import UserMenu from "@/components/UserMenu";
 import HotelSwitcher from "@/components/HotelSwitcher";
@@ -100,6 +101,21 @@ export default function Dashboard() {
   const { historicalData, loading: dataLoading } = useHotelHistoricalData(activeHotel?.id);
   const { unreadCount } = useAlerts(activeHotel?.id);
 
+  // Fetch competitor rates for active hotel
+  const [competitorRates, setCompetitorRates] = useState<CompetitorRate[]>([]);
+  useEffect(() => {
+    if (!activeHotel?.id) return;
+    import("@/integrations/supabase/client").then(({ supabase }) => {
+      supabase
+        .from("competitor_rates")
+        .select("competitor_name, price")
+        .eq("hotel_id", activeHotel.id)
+        .then(({ data }) => {
+          if (data) setCompetitorRates(data);
+        });
+    });
+  }, [activeHotel?.id]);
+
   // Derive hotel profile from active hotel (real DB data)
   const hotel = useMemo(() => {
     if (!activeHotel) return { name: "Loading…", rooms: 85, city: "", avgOccupancy: 0.72, basePrice: 120, currency: "€" };
@@ -126,8 +142,10 @@ export default function Dashboard() {
       rolling7DayTrend: historicalStats.rolling7DayTrend,
       rolling30DaySeasonality: historicalStats.rolling30DaySeasonality,
       weekdayBookingPace: historicalStats.weekdayBookingPace,
-    } : undefined
-  ), [hotel, historicalStats]);
+    } : undefined,
+    hotel.city,
+    competitorRates
+  ), [hotel, historicalStats, competitorRates]);
 
   const kpiData = useMemo(() => computeKPIs(forecasts), [forecasts]);
   const alerts = useMemo(() => generateAlerts(forecasts), [forecasts]);

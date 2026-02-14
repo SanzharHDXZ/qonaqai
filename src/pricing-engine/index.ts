@@ -21,3 +21,6 @@ export type { HistoricalDemandStats, HistoricalRecord } from "./historicalDemand
 
 export { calculateForecastAccuracy, buildForecastRecords } from "./forecastAccuracy";
 export type { ForecastRecord, ForecastAccuracyResult } from "./forecastAccuracy";
+
+export { getExternalSignalScore, getEventImpact, getWeatherImpact, getCompetitorImpact } from "./marketSignals";
+export type { ExternalSignalResult, LocalEvent, CompetitorRate, WeatherData } from "./marketSignals";

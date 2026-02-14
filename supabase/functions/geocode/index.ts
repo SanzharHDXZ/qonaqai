@@ -4,6 +4,10 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function sanitizeString(input: string, maxLength: number): string {
+  return input.trim().slice(0, maxLength).replace(/[^\p{L}\p{N}\s\-,.']/gu, "");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -11,7 +15,15 @@ Deno.serve(async (req) => {
 
   try {
     const { query } = await req.json();
-    if (!query || query.trim().length < 2) {
+    if (!query || typeof query !== "string") {
+      return new Response(JSON.stringify({ error: "query must be a non-empty string", suggestions: [] }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const sanitized = sanitizeString(query, 200);
+    if (sanitized.length < 2) {
       return new Response(JSON.stringify({ suggestions: [] }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -21,13 +33,12 @@ Deno.serve(async (req) => {
     if (!apiKey) {
       console.error("[geocode] OPENWEATHER_API_KEY not configured");
       return new Response(
-        JSON.stringify({ error: "OPENWEATHER_API_KEY not configured", suggestions: [] }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Geocoding service unavailable", suggestions: [] }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const normalizedQuery = query.trim();
-    const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(normalizedQuery)}&limit=5&appid=${apiKey}`;
+    const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(sanitized)}&limit=5&appid=${apiKey}`;
     console.log("[geocode] Request URL:", geoUrl.replace(apiKey, "***"));
     
     const geoRes = await fetch(geoUrl);
@@ -62,7 +73,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error("[geocode] Function error:", err);
     return new Response(
-      JSON.stringify({ error: err.message, suggestions: [] }),
+      JSON.stringify({ error: "Internal server error", suggestions: [] }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

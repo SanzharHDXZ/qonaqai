@@ -6,6 +6,16 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function isValidLat(v: unknown): v is number {
+  return typeof v === "number" && v >= -90 && v <= 90;
+}
+function isValidLon(v: unknown): v is number {
+  return typeof v === "number" && v >= -180 && v <= 180;
+}
+function sanitizeCity(input: string): string {
+  return input.trim().slice(0, 100).replace(/[^\p{L}\p{N}\s\-,.']/gu, "");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -14,14 +24,33 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json();
     const { city, lat, lon } = body;
-    if (!city && (lat == null || lon == null)) {
+
+    const hasCoords = lat != null && lon != null;
+    const hasCity = typeof city === "string" && city.trim().length > 0;
+
+    if (!hasCity && !hasCoords) {
       return new Response(JSON.stringify({ error: "city or lat/lon is required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const cacheKey = lat != null && lon != null ? `${lat.toFixed(2)},${lon.toFixed(2)}` : city.trim().toLowerCase();
+    if (hasCoords && (!isValidLat(lat) || !isValidLon(lon))) {
+      return new Response(JSON.stringify({ error: "Invalid coordinates. Lat: -90 to 90, Lon: -180 to 180" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const sanitizedCity = hasCity ? sanitizeCity(city) : "";
+    if (hasCity && sanitizedCity.length < 1) {
+      return new Response(JSON.stringify({ error: "Invalid city name" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const cacheKey = hasCoords ? `${lat.toFixed(2)},${lon.toFixed(2)}` : sanitizedCity.toLowerCase();
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -46,15 +75,14 @@ Deno.serve(async (req) => {
     if (!apiKey) {
       console.error("[weather] OPENWEATHER_API_KEY not configured");
       return new Response(
-        JSON.stringify({ error: "OPENWEATHER_API_KEY not configured", data: [] }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Weather service unavailable", data: [] }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Prefer lat/lon for accuracy, fall back to city name
-    const queryParam = lat != null && lon != null
+    const queryParam = hasCoords
       ? `lat=${lat}&lon=${lon}`
-      : `q=${encodeURIComponent(city.trim())}`;
+      : `q=${encodeURIComponent(sanitizedCity)}`;
 
     const weatherUrl = `https://api.openweathermap.org/data/2.5/forecast?${queryParam}&units=metric&appid=${apiKey}`;
     console.log("[weather] Request URL:", weatherUrl.replace(apiKey, "***"));
@@ -66,7 +94,7 @@ Deno.serve(async (req) => {
       const errText = await weatherRes.text();
       console.error("[weather] API error:", errText);
       return new Response(
-        JSON.stringify({ error: "Weather API failed", details: errText, data: [] }),
+        JSON.stringify({ error: "Weather API failed", data: [] }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -119,7 +147,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error("[weather] Function error:", err);
     return new Response(
-      JSON.stringify({ error: err.message, data: [] }),
+      JSON.stringify({ error: "Internal server error", data: [] }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

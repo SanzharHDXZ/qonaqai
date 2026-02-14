@@ -14,7 +14,89 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      historical_data: {
+        Row: {
+          average_daily_rate: number
+          cancellations: number | null
+          created_at: string
+          date: string
+          hotel_id: string
+          id: string
+          occupancy_rate: number | null
+          rooms_available: number
+          rooms_sold: number
+        }
+        Insert: {
+          average_daily_rate: number
+          cancellations?: number | null
+          created_at?: string
+          date: string
+          hotel_id: string
+          id?: string
+          occupancy_rate?: number | null
+          rooms_available: number
+          rooms_sold: number
+        }
+        Update: {
+          average_daily_rate?: number
+          cancellations?: number | null
+          created_at?: string
+          date?: string
+          hotel_id?: string
+          id?: string
+          occupancy_rate?: number | null
+          rooms_available?: number
+          rooms_sold?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "historical_data_hotel_id_fkey"
+            columns: ["hotel_id"]
+            isOneToOne: false
+            referencedRelation: "hotels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hotels: {
+        Row: {
+          avg_occupancy: number
+          base_price: number
+          city: string
+          created_at: string
+          currency: string
+          id: string
+          name: string
+          rooms: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avg_occupancy?: number
+          base_price?: number
+          city?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          name: string
+          rooms?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avg_occupancy?: number
+          base_price?: number
+          city?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          name?: string
+          rooms?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

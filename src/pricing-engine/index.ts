@@ -12,3 +12,9 @@ export type { ConfidenceConfig, ConfidenceResult } from "./confidenceModel";
 
 export { simulateRevenue } from "./revenueSimulator";
 export type { RevenueSimulationInput, RevenueSimulationResult } from "./revenueSimulator";
+
+export { runBacktest } from "./backtestEngine";
+export type { BacktestDayResult, BacktestSummary, HistoricalRecord as BacktestHistoricalRecord } from "./backtestEngine";
+
+export { computeHistoricalStats, getStoredHistoricalData } from "./historicalDemandModel";
+export type { HistoricalDemandStats, HistoricalRecord } from "./historicalDemandModel";

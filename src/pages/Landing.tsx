@@ -1,6 +1,9 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, BarChart3, Brain, TrendingUp, Shield, Zap, Building2, ChevronRight, Check } from "lucide-react";
+import { useMemo } from "react";
+import { ArrowRight, BarChart3, Brain, TrendingUp, Shield, Zap, Building2, ChevronRight, Check, Database } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { getStoredHistoricalData, computeHistoricalStats } from "@/pricing-engine";
+import { generateForecasts, computeKPIs, hotelProfile } from "@/data/mockData";
 
 const Navbar = () => (
   <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
@@ -28,18 +31,11 @@ const Navbar = () => (
   </nav>
 );
 
-const stats = [
-  { value: "23%", label: "Average Revenue Lift" },
-  { value: "94%", label: "Forecast Accuracy" },
-  { value: "< 2min", label: "Daily Setup Time" },
-  { value: "500+", label: "Hotels Optimized" },
-];
-
 const features = [
   {
     icon: Brain,
     title: "AI Demand Forecasting",
-    description: "Predict occupancy with 94% accuracy using time-series ML models trained on your historical data, local events, and seasonality.",
+    description: "Predict occupancy using time-series models trained on your historical data, local events, and seasonality patterns.",
   },
   {
     icon: TrendingUp,
@@ -91,6 +87,38 @@ const tiers = [
 ];
 
 export default function Landing() {
+  // Compute dynamic stats from real data when available
+  const dynamicStats = useMemo(() => {
+    const historicalData = getStoredHistoricalData();
+    const stats = computeHistoricalStats(historicalData);
+    const forecasts = generateForecasts(hotelProfile.rooms, hotelProfile.basePrice, hotelProfile.avgOccupancy);
+    const kpis = computeKPIs(forecasts);
+
+    if (stats.hasData) {
+      return {
+        hasRealData: true,
+        revenueLift: `+${kpis.revenueLift}%`,
+        dataPoints: `${stats.totalRecords}`,
+        avgConfidence: `${kpis.avgConfidence}%`,
+        setupTime: "< 2min",
+      };
+    }
+    return {
+      hasRealData: false,
+      revenueLift: `+${kpis.revenueLift}%`,
+      dataPoints: "Demo",
+      avgConfidence: `${kpis.avgConfidence}%`,
+      setupTime: "< 2min",
+    };
+  }, []);
+
+  const statsDisplay = [
+    { value: dynamicStats.revenueLift, label: "Projected Revenue Lift" },
+    { value: dynamicStats.avgConfidence, label: "Avg. AI Confidence" },
+    { value: dynamicStats.setupTime, label: "Daily Setup Time" },
+    { value: dynamicStats.dataPoints, label: dynamicStats.hasRealData ? "Days of Data" : "Data Mode" },
+  ];
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -110,8 +138,10 @@ export default function Landing() {
             </h1>
             <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto">
               RevPilot uses AI demand forecasting to recommend optimal daily room prices.
-              Hotels using RevPilot see an average <strong className="text-foreground">23% revenue increase</strong> within
-              the first 90 days.
+              {dynamicStats.hasRealData
+                ? <> Based on your data, RevPilot projects a <strong className="text-foreground">{dynamicStats.revenueLift} revenue lift</strong>.</>
+                : <> Upload your hotel data to see projected revenue improvements based on <strong className="text-foreground">real calculations</strong>.</>
+              }
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link to="/dashboard">
@@ -119,17 +149,17 @@ export default function Landing() {
                   Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
-              <Link to="/pricing">
+              <Link to="/data-import">
                 <Button variant="outline" size="lg" className="px-8">
-                  View Pricing
+                  <Database className="mr-2 h-4 w-4" /> Import Your Data
                 </Button>
               </Link>
             </div>
           </div>
 
-          {/* Stats */}
+          {/* Stats - Dynamic */}
           <div className="mx-auto mt-16 grid max-w-3xl grid-cols-2 gap-8 sm:grid-cols-4">
-            {stats.map((stat) => (
+            {statsDisplay.map((stat) => (
               <div key={stat.label} className="text-center">
                 <div className="text-2xl font-bold text-primary">{stat.value}</div>
                 <div className="mt-1 text-xs text-muted-foreground">{stat.label}</div>
@@ -167,26 +197,40 @@ export default function Landing() {
         <div className="container mx-auto px-6">
           <div className="mx-auto max-w-3xl text-center">
             <h2 className="text-3xl font-bold">The ROI is clear</h2>
-            <p className="mt-3 text-muted-foreground">For an 85-room hotel at €120 base rate</p>
-            <div className="mt-10 grid gap-6 sm:grid-cols-3">
-              <div className="rounded-xl border border-border bg-background p-6">
-                <div className="text-sm text-muted-foreground">Static Pricing Revenue</div>
-                <div className="mt-2 text-2xl font-bold">€306,000</div>
-                <div className="mt-1 text-xs text-muted-foreground">/month</div>
-              </div>
-              <div className="rounded-xl border-2 border-primary bg-background p-6 shadow-elevated">
-                <div className="text-sm text-primary font-medium">AI-Optimized Revenue</div>
-                <div className="mt-2 text-2xl font-bold text-primary">€378,420</div>
-                <div className="mt-1 text-xs text-muted-foreground">/month</div>
-              </div>
-              <div className="rounded-xl border border-success/30 bg-background p-6">
-                <div className="text-sm text-success font-medium">Revenue Lift</div>
-                <div className="mt-2 text-2xl font-bold text-success">+€72,420</div>
-                <div className="mt-1 text-xs text-muted-foreground">+23.7% increase</div>
-              </div>
-            </div>
+            <p className="mt-3 text-muted-foreground">
+              {dynamicStats.hasRealData
+                ? "Based on your uploaded historical data"
+                : "Example projection for an 85-room hotel at €120 base rate"
+              }
+            </p>
+            {(() => {
+              const forecasts = generateForecasts(hotelProfile.rooms, hotelProfile.basePrice, hotelProfile.avgOccupancy);
+              const kpis = computeKPIs(forecasts);
+              return (
+                <div className="mt-10 grid gap-6 sm:grid-cols-3">
+                  <div className="rounded-xl border border-border bg-background p-6">
+                    <div className="text-sm text-muted-foreground">Static Pricing Revenue</div>
+                    <div className="mt-2 text-2xl font-bold">€{kpis.staticRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">/30 days</div>
+                  </div>
+                  <div className="rounded-xl border-2 border-primary bg-background p-6 shadow-elevated">
+                    <div className="text-sm text-primary font-medium">AI-Optimized Revenue</div>
+                    <div className="mt-2 text-2xl font-bold text-primary">€{kpis.projectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">/30 days</div>
+                  </div>
+                  <div className="rounded-xl border border-success/30 bg-background p-6">
+                    <div className="text-sm text-success font-medium">Projected Uplift</div>
+                    <div className="mt-2 text-2xl font-bold text-success">+€{(kpis.projectedRevenue - kpis.staticRevenue).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">+{kpis.revenueLift}%</div>
+                  </div>
+                </div>
+              );
+            })()}
             <p className="mt-8 text-sm text-muted-foreground">
-              RevPilot pays for itself within the first week. Average ROI: <strong className="text-foreground">48x</strong>.
+              {dynamicStats.hasRealData
+                ? "These projections are calculated from your actual hotel performance data."
+                : "Upload your historical data to see personalized projections."
+              }
             </p>
           </div>
         </div>
@@ -244,13 +288,20 @@ export default function Landing() {
         <div className="container mx-auto px-6 text-center">
           <h2 className="text-3xl font-bold">Ready to optimize your revenue?</h2>
           <p className="mt-3 text-muted-foreground max-w-lg mx-auto">
-            Join 500+ hotels already using RevPilot to maximize their revenue with AI-powered dynamic pricing.
+            Upload your historical data and see exactly how much more revenue RevPilot can generate for your hotel.
           </p>
-          <Link to="/dashboard" className="inline-block mt-8">
-            <Button size="lg" className="px-8">
-              Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </Link>
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link to="/data-import" className="inline-block">
+              <Button size="lg" className="px-8">
+                Import Your Data <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+            <Link to="/dashboard" className="inline-block">
+              <Button variant="outline" size="lg" className="px-8">
+                Try Demo Dashboard
+              </Button>
+            </Link>
+          </div>
         </div>
       </section>
 

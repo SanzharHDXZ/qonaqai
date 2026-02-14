@@ -3,17 +3,18 @@ import { Link } from "react-router-dom";
 import {
   BarChart3, TrendingUp, Percent, DollarSign, AlertTriangle, Building2,
   SlidersHorizontal, ArrowUpRight, ArrowDownRight, Bell, Calendar, Zap,
-  ChevronLeft, Settings, LogOut,
+  ChevronLeft, Settings, LogOut, Info, Database, FlaskConical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 import { generateForecasts, generateAlerts, computeKPIs, competitors, hotelProfile, type DailyForecast, type Alert } from "@/data/mockData";
-import { simulateRevenue } from "@/pricing-engine";
+import { simulateRevenue, runBacktest, getStoredHistoricalData, computeHistoricalStats } from "@/pricing-engine";
+import ExplainPrice from "@/components/ExplainPrice";
 
 // ─── KPI Card ──────────────────────────────────────────
 function KPICard({ title, value, sub, icon: Icon, trend }: {
@@ -90,11 +91,26 @@ function ConfidenceGauge({ value }: { value: number }) {
 
 // ─── Main Dashboard ────────────────────────────────────
 export default function Dashboard() {
+  const historicalData = useMemo(() => getStoredHistoricalData(), []);
+  const historicalStats = useMemo(() => computeHistoricalStats(historicalData), [historicalData]);
+
   const forecasts = useMemo(() => generateForecasts(hotelProfile.rooms, hotelProfile.basePrice, hotelProfile.avgOccupancy), []);
   const kpiData = useMemo(() => computeKPIs(forecasts), [forecasts]);
   const alerts = useMemo(() => generateAlerts(forecasts), [forecasts]);
   const [selectedDay, setSelectedDay] = useState<DailyForecast>(forecasts[0]);
   const [manualPrice, setManualPrice] = useState(selectedDay.recommendedPrice);
+  const [showExplain, setShowExplain] = useState(false);
+  const [showBacktest, setShowBacktest] = useState(false);
+
+  // Backtest results
+  const backtestResult = useMemo(() => {
+    if (!showBacktest || historicalData.length === 0) return null;
+    return runBacktest(historicalData, {
+      baseOccupancy: hotelProfile.avgOccupancy,
+      basePrice: hotelProfile.basePrice,
+      totalRooms: hotelProfile.rooms,
+    });
+  }, [showBacktest, historicalData]);
 
   // Real revenue simulation using the pricing engine
   const simulation = useMemo(() => simulateRevenue({
@@ -132,6 +148,12 @@ export default function Dashboard() {
             <span className="hidden sm:inline text-sm text-muted-foreground">/ {hotelProfile.name}</span>
           </div>
           <div className="flex items-center gap-2">
+            <Link to="/data-import">
+              <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs">
+                <Database className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Import Data</span>
+              </Button>
+            </Link>
             <Button variant="ghost" size="icon" className="h-8 w-8"><Bell className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" className="h-8 w-8"><Settings className="h-4 w-4" /></Button>
             <Link to="/"><Button variant="ghost" size="icon" className="h-8 w-8"><LogOut className="h-4 w-4" /></Button></Link>
@@ -140,13 +162,100 @@ export default function Dashboard() {
       </header>
 
       <main className="container mx-auto px-6 py-6 space-y-6">
-        {/* Welcome */}
-        <div>
-          <h1 className="text-2xl font-bold">Revenue Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {hotelProfile.name} · {hotelProfile.rooms} rooms · {hotelProfile.city}
-          </p>
+        {/* Welcome + Data Status */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">Revenue Dashboard</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {hotelProfile.name} · {hotelProfile.rooms} rooms · {hotelProfile.city}
+              {historicalStats.hasData && (
+                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-xs text-success font-medium">
+                  <Database className="h-3 w-3" />
+                  {historicalStats.totalRecords} days of data
+                </span>
+              )}
+            </p>
+          </div>
+          {historicalData.length > 0 && (
+            <Button
+              variant={showBacktest ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowBacktest(!showBacktest)}
+              className="gap-2"
+            >
+              <FlaskConical className="h-4 w-4" />
+              {showBacktest ? "Hide Backtest" : "Backtest Mode"}
+            </Button>
+          )}
         </div>
+
+        {/* Backtest Results */}
+        {showBacktest && backtestResult && (
+          <div className="rounded-xl border-2 border-primary/20 bg-accent/20 p-5 space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <FlaskConical className="h-4 w-4 text-primary" /> Backtest Results
+              </h3>
+              <span className="text-xs text-muted-foreground">{backtestResult.totalDays} days analyzed</span>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="rounded-lg border border-border bg-card p-4 text-center">
+                <div className="text-xs text-muted-foreground">Actual Revenue</div>
+                <div className="text-lg font-bold mt-1">€{backtestResult.actualTotalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+              </div>
+              <div className="rounded-lg border border-border bg-card p-4 text-center">
+                <div className="text-xs text-muted-foreground">AI Projected Revenue</div>
+                <div className="text-lg font-bold text-primary mt-1">€{backtestResult.aiTotalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+              </div>
+              <div className="rounded-lg border border-border bg-card p-4 text-center">
+                <div className="text-xs text-muted-foreground">Revenue Difference</div>
+                <div className={`text-lg font-bold mt-1 ${backtestResult.revenueDifference >= 0 ? "text-success" : "text-destructive"}`}>
+                  {backtestResult.revenueDifference >= 0 ? "+" : ""}€{backtestResult.revenueDifference.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </div>
+              </div>
+              <div className="rounded-lg border border-border bg-card p-4 text-center">
+                <div className="text-xs text-muted-foreground">Uplift</div>
+                <div className={`text-lg font-bold mt-1 ${backtestResult.revenueUpliftPercent >= 0 ? "text-success" : "text-destructive"}`}>
+                  {backtestResult.revenueUpliftPercent >= 0 ? "+" : ""}{backtestResult.revenueUpliftPercent}%
+                </div>
+              </div>
+              <div className="rounded-lg border border-border bg-card p-4 text-center">
+                <div className="text-xs text-muted-foreground">Forecast MAE</div>
+                <div className="text-lg font-bold mt-1">{backtestResult.meanAbsoluteError} pts</div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-lg bg-success/10 p-3 text-center">
+                <div className="text-2xl font-bold text-success">{backtestResult.winDays}</div>
+                <div className="text-xs text-muted-foreground">Win Days</div>
+              </div>
+              <div className="rounded-lg bg-destructive/10 p-3 text-center">
+                <div className="text-2xl font-bold text-destructive">{backtestResult.lossDays}</div>
+                <div className="text-xs text-muted-foreground">Loss Days</div>
+              </div>
+              <div className="rounded-lg bg-muted p-3 text-center">
+                <div className="text-2xl font-bold">{backtestResult.avgConfidence}%</div>
+                <div className="text-xs text-muted-foreground">Avg Confidence</div>
+              </div>
+            </div>
+
+            {/* Backtest daily chart */}
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={backtestResult.dailyResults.slice(-30)}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => v.slice(5)} />
+                  <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
+                  <Bar dataKey="actualRevenue" fill="hsl(var(--muted-foreground))" radius={[2, 2, 0, 0]} name="Actual Revenue" />
+                  <Bar dataKey="aiProjectedRevenue" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} name="AI Revenue" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
 
         {/* KPIs */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -168,7 +277,7 @@ export default function Dashboard() {
             title="AI Confidence Score"
             value={`${kpiData.avgConfidence}%`}
             icon={Zap}
-            sub="30-day average"
+            sub={historicalStats.hasData ? `Based on ${historicalStats.totalRecords} data points` : "30-day average"}
           />
           <KPICard
             title="Projected Revenue Lift"
@@ -258,6 +367,7 @@ export default function Dashboard() {
                     <th className="px-4 py-3 text-right font-medium">Range</th>
                     <th className="px-4 py-3 text-right font-medium">Confidence</th>
                     <th className="px-4 py-3 text-left font-medium">Event</th>
+                    <th className="px-4 py-3 text-center font-medium">Explain</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -265,7 +375,7 @@ export default function Dashboard() {
                     <tr
                       key={f.date}
                       className={`border-b border-border hover:bg-muted/30 cursor-pointer transition-colors ${selectedDay.date === f.date ? "bg-accent/50" : ""}`}
-                      onClick={() => { setSelectedDay(f); setManualPrice(f.recommendedPrice); }}
+                      onClick={() => { setSelectedDay(f); setManualPrice(f.recommendedPrice); setShowExplain(false); }}
                     >
                       <td className="px-4 py-3 font-medium">{f.dayLabel}</td>
                       <td className="px-4 py-3 text-right">
@@ -283,6 +393,21 @@ export default function Dashboard() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{f.event || "—"}</td>
+                      <td className="px-4 py-3 text-center">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedDay(f);
+                            setManualPrice(f.recommendedPrice);
+                            setShowExplain(true);
+                          }}
+                        >
+                          <Info className="h-3.5 w-3.5 text-primary" />
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -292,36 +417,47 @@ export default function Dashboard() {
 
           {/* Right Column */}
           <div className="space-y-6">
+            {/* Explain Price Panel */}
+            {showExplain && (
+              <ExplainPrice
+                forecast={selectedDay}
+                basePrice={hotelProfile.basePrice}
+                onClose={() => setShowExplain(false)}
+              />
+            )}
+
             {/* Confidence Gauge */}
-            <div className="rounded-xl border border-border bg-card p-5">
-              <h3 className="text-sm font-medium mb-4">Price Confidence – {selectedDay.dayLabel}</h3>
-              <div className="flex justify-center my-4">
-                <ConfidenceGauge value={selectedDay.confidence} />
+            {!showExplain && (
+              <div className="rounded-xl border border-border bg-card p-5">
+                <h3 className="text-sm font-medium mb-4">Price Confidence – {selectedDay.dayLabel}</h3>
+                <div className="flex justify-center my-4">
+                  <ConfidenceGauge value={selectedDay.confidence} />
+                </div>
+                <div className="mt-6 space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Data completeness</span>
+                    <span className="font-medium">{Math.round(selectedDay.dataCompleteness * 100)}%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Event signal</span>
+                    <span className="font-medium">{Math.round(selectedDay.eventSignalStrength * 100)}%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Trend consistency</span>
+                    <span className="font-medium">{Math.round(selectedDay.trendConsistency * 100)}%</span>
+                  </div>
+                  <div className="border-t border-border my-2" />
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Underpricing risk</span>
+                    <span className={`font-medium ${selectedDay.predictedOccupancy > 75 ? "text-warning" : "text-success"}`}>{selectedDay.predictedOccupancy > 75 ? "High" : "Low"}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Overpricing risk</span>
+                    <span className={`font-medium ${selectedDay.predictedOccupancy < 60 ? "text-destructive" : "text-success"}`}>{selectedDay.predictedOccupancy < 60 ? "High" : "Low"}</span>
+                  </div>
+                </div>
               </div>
-              <div className="mt-6 space-y-3">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Data completeness</span>
-                  <span className="font-medium">{Math.round(selectedDay.dataCompleteness * 100)}%</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Event signal</span>
-                  <span className="font-medium">{Math.round(selectedDay.eventSignalStrength * 100)}%</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Trend consistency</span>
-                  <span className="font-medium">{Math.round(selectedDay.trendConsistency * 100)}%</span>
-                </div>
-                <div className="border-t border-border my-2" />
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Underpricing risk</span>
-                  <span className={`font-medium ${selectedDay.predictedOccupancy > 75 ? "text-warning" : "text-success"}`}>{selectedDay.predictedOccupancy > 75 ? "High" : "Low"}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Overpricing risk</span>
-                  <span className={`font-medium ${selectedDay.predictedOccupancy < 60 ? "text-destructive" : "text-success"}`}>{selectedDay.predictedOccupancy < 60 ? "High" : "Low"}</span>
-                </div>
-              </div>
-            </div>
+            )}
 
             {/* Alerts */}
             <div className="rounded-xl border border-border bg-card p-5">

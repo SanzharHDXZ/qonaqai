@@ -236,14 +236,9 @@ export default function Dashboard() {
   const activeDay = selectedDay || forecasts[0];
   const [manualPrice, setManualPrice] = useState<number | null>(null);
 
-  // Sync manualPrice when activeDay changes (e.g. forecasts load or day selection changes)
-  useEffect(() => {
-    if (activeDay?.recommendedPrice) {
-      setManualPrice(safeNum(activeDay.recommendedPrice, hotel.basePrice));
-    }
-  }, [activeDay?.recommendedPrice, activeDay?.dayLabel]);
-
-  const effectiveManualPrice = manualPrice ?? safeNum(activeDay?.recommendedPrice, hotel.basePrice);
+  // Manual price defaults to hotel's base_price, NOT AI recommended price
+  // Only changes when user explicitly moves the slider
+  const effectiveManualPrice = manualPrice ?? hotel.basePrice;
   const [showExplain, setShowExplain] = useState(false);
   const [showBacktest, setShowBacktest] = useState(false);
 
@@ -629,7 +624,7 @@ export default function Dashboard() {
                     <tr
                       key={f.date}
                       className={`border-b border-border hover:bg-muted/30 cursor-pointer transition-colors ${activeDay?.date === f.date ? "bg-accent/50" : ""}`}
-                      onClick={() => { setSelectedDay(f); setManualPrice(safeNum(f.recommendedPrice, hotel.basePrice)); setShowExplain(false); }}
+                      onClick={() => { setSelectedDay(f); setManualPrice(null); setShowExplain(false); }}
                     >
                       <td className="px-4 py-3 font-medium">{f.dayLabel}</td>
                       <td className="px-4 py-3 text-right">
@@ -666,7 +661,7 @@ export default function Dashboard() {
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedDay(f);
-                            setManualPrice(safeNum(f.recommendedPrice, hotel.basePrice));
+                            setManualPrice(null);
                             setShowExplain(true);
                           }}
                         >

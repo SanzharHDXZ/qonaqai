@@ -1,4 +1,4 @@
-import { Info, X, Zap } from "lucide-react";
+import { Info, X, Zap, Cloud, Calendar, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { DailyForecast } from "@/data/mockData";
 
@@ -88,6 +88,8 @@ export default function ExplainPrice({ forecast, basePrice, onClose }: ExplainPr
     saturation: "Saturation mode: occupancy >95% → profit-maximizing pricing",
   };
 
+  const hasExternalSignals = forecast.externalSignalScore > 0;
+
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-center justify-between mb-4">
@@ -128,6 +130,45 @@ export default function ExplainPrice({ forecast, basePrice, onClose }: ExplainPr
             </div>
           </div>
         ))}
+      </div>
+
+      {/* External Market Signals */}
+      <div className="rounded-lg border border-border p-4 mb-5 space-y-3">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          External Market Signals (+{forecast.externalSignalScore.toFixed(1)} pts)
+        </div>
+        <div className="grid gap-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <Calendar className="h-3.5 w-3.5" /> Event impact
+            </span>
+            <span className={`font-medium ${forecast.externalEventImpact > 0 ? "text-success" : ""}`}>
+              {forecast.externalEventImpact > 0 ? "+" : ""}{forecast.externalEventImpact.toFixed(1)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <Cloud className="h-3.5 w-3.5" /> Weather impact
+            </span>
+            <span className={`font-medium ${forecast.externalWeatherImpact > 0 ? "text-success" : forecast.externalWeatherImpact < 0 ? "text-destructive" : ""}`}>
+              {forecast.externalWeatherImpact > 0 ? "+" : ""}{forecast.externalWeatherImpact.toFixed(1)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <Building2 className="h-3.5 w-3.5" /> Competitor position
+            </span>
+            <span className={`font-medium ${forecast.externalCompetitorImpact > 0 ? "text-success" : forecast.externalCompetitorImpact < 0 ? "text-destructive" : ""}`}>
+              {forecast.externalCompetitorImpact > 0 ? "+" : ""}{forecast.externalCompetitorImpact.toFixed(1)}
+            </span>
+          </div>
+          <div className="border-t border-border pt-2 flex items-center justify-between text-sm">
+            <span className="font-medium">Total external adjustment</span>
+            <span className={`font-bold ${hasExternalSignals ? "text-primary" : ""}`}>
+              +{forecast.externalSignalScore.toFixed(1)} pts
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Saturation Warning */}

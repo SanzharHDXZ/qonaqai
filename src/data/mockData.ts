@@ -11,7 +11,9 @@ import {
   calculatePrice,
   calculateConfidence,
   simulateRevenue,
+  getExternalSignalScore,
 } from "@/pricing-engine";
+import type { CompetitorRate } from "@/pricing-engine";
 
 const today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
 
@@ -65,6 +67,11 @@ export interface DailyForecast {
   eventMultiplier: number;
   trendFactor: number;
   bookingPaceVelocity: number;
+  // External market signals
+  externalSignalScore: number;
+  externalEventImpact: number;
+  externalWeatherImpact: number;
+  externalCompetitorImpact: number;
   // Demand component scores
   demandComponents: {
     weekdayAvgScore: number;
@@ -96,19 +103,25 @@ export function generateForecasts(
     rolling7DayTrend?: number;
     rolling30DaySeasonality?: number;
     weekdayBookingPace?: Record<number, number>;
-  }
+  },
+  city: string = hotelProfile.city,
+  competitorRates: CompetitorRate[] = []
 ): DailyForecast[] {
   return Array.from({ length: 30 }, (_, dayOffset) => {
     const date = addDays(today, dayOffset);
     const dow = date.getDay();
 
-    // 1. Demand Model (weighted)
+    // External market signals
+    const externalSignals = getExternalSignalScore(city, date, basePrice, competitorRates);
+
+    // 1. Demand Model (weighted) with external signal
     const demand = calculateDemandScore(date, dayOffset, {
       baseOccupancy,
       historicalWeekdayAvg: histStats?.weekdayAvgOccupancy?.[dow],
       historicalTrend7Day: histStats?.rolling7DayTrend,
       historicalSeasonality30Day: histStats?.rolling30DaySeasonality,
       bookingPaceVelocity: histStats?.weekdayBookingPace?.[dow],
+      externalSignalScore: externalSignals.totalScore,
     });
 
     // 2. Price Optimizer (with saturation cap)
@@ -159,6 +172,10 @@ export function generateForecasts(
       eventMultiplier: demand.eventMultiplier,
       trendFactor: demand.trendFactor,
       bookingPaceVelocity: demand.bookingPaceVelocity,
+      externalSignalScore: externalSignals.totalScore,
+      externalEventImpact: externalSignals.eventImpact,
+      externalWeatherImpact: externalSignals.weatherImpact,
+      externalCompetitorImpact: externalSignals.competitorImpact,
       demandComponents: demand.components,
       dataCompleteness: conf.dataCompleteness,
       eventSignalStrength: conf.eventSignalStrength,

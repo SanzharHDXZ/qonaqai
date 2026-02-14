@@ -83,6 +83,8 @@ export interface DemandModelConfig {
   historicalSeasonality30Day?: number;
   /** Booking pace velocity (-1 to +1 scale, 0 = normal pace) */
   bookingPaceVelocity?: number;
+  /** External market signal score (0–20), added to the weighted model */
+  externalSignalScore?: number;
 }
 
 export interface DemandResult {
@@ -92,6 +94,7 @@ export interface DemandResult {
   eventMultiplier: number;
   trendFactor: number;
   bookingPaceVelocity: number;
+  externalSignalScore: number;
   event?: string;
   // Weighted component scores (0–100 each)
   components: {
@@ -184,14 +187,19 @@ export function calculateDemandScore(
   // 5. Booking pace score: -1..+1 → 0..100
   const bookingPaceScore = Math.round(Math.max(0, Math.min(100, (bookingPaceVelocity + 1) * 50)));
 
+  // ─── External Signal Score ───
+  const externalSignalScore = config.externalSignalScore ?? 0;
+
   // ─── Weighted Demand Score ───
-  const demandScore = Math.max(0, Math.min(100, Math.round(
+  // External signal adds 0–20 points directly on top of the weighted base
+  const baseWeighted = 
     w.weekdayAvg * weekdayAvgScore +
     w.trend7Day * trendScore +
     w.seasonality30Day * seasonalityScore +
     w.eventStrength * eventScore +
-    w.bookingPace * bookingPaceScore
-  )));
+    w.bookingPace * bookingPaceScore;
+
+  const demandScore = Math.max(0, Math.min(100, Math.round(baseWeighted + externalSignalScore)));
 
   return {
     demandScore,
@@ -200,6 +208,7 @@ export function calculateDemandScore(
     eventMultiplier,
     trendFactor: Math.round(trendFactor * 1000) / 1000,
     bookingPaceVelocity,
+    externalSignalScore,
     event: scheduledEvent?.name,
     components: {
       weekdayAvgScore,

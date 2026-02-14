@@ -12,32 +12,38 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { city } = await req.json();
-    if (!city) {
-      return new Response(JSON.stringify({ error: "city is required" }), {
+    const body = await req.json();
+    const { city, lat, lon } = body;
+
+    // Prefer lat/lon over city name for accuracy
+    if (!city && !lat) {
+      return new Response(JSON.stringify({ error: "city or lat/lon is required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const normalizedCity = city.trim().toLowerCase();
+    const normalizedCity = (city || "").trim().toLowerCase();
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Check cache (24 hour TTL)
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data: cached } = await supabase
-      .from("event_cache")
-      .select("*")
-      .eq("city", normalizedCity)
-      .gte("fetched_at", twentyFourHoursAgo);
+    
+    if (normalizedCity) {
+      const { data: cached } = await supabase
+        .from("event_cache")
+        .select("*")
+        .eq("city", normalizedCity)
+        .gte("fetched_at", twentyFourHoursAgo);
 
-    if (cached && cached.length > 0) {
-      console.log("[events] Cache hit for:", normalizedCity, "rows:", cached.length);
-      return new Response(JSON.stringify({ source: "cache", data: cached }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (cached && cached.length > 0) {
+        console.log("[events] Cache hit for:", normalizedCity, "rows:", cached.length);
+        return new Response(JSON.stringify({ source: "cache", data: cached }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // Fetch from Ticketmaster Discovery API
@@ -54,7 +60,17 @@ Deno.serve(async (req) => {
     const startDate = now.toISOString().split(".")[0] + "Z";
     const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split(".")[0] + "Z";
 
-    const tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&city=${encodeURIComponent(city.trim())}&startDateTime=${startDate}&endDateTime=${endDate}&size=50&sort=date,asc`;
+    // Build URL: use latlong if available, otherwise fall back to city
+    let tmUrl: string;
+    if (lat && lon) {
+      // Use geoPoint with a 50km radius for much better results
+      tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&latlong=${lat},${lon}&radius=50&unit=km&startDateTime=${startDate}&endDateTime=${endDate}&size=50&sort=date,asc`;
+      console.log("[events] Using lat/lon:", lat, lon);
+    } else {
+      tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&city=${encodeURIComponent(city.trim())}&startDateTime=${startDate}&endDateTime=${endDate}&size=50&sort=date,asc`;
+      console.log("[events] Using city name (fallback):", city.trim());
+    }
+    
     console.log("[events] Request URL:", tmUrl.replace(apiKey, "***"));
     
     const tmRes = await fetch(tmUrl);
@@ -72,9 +88,13 @@ Deno.serve(async (req) => {
     const tmData = await tmRes.json();
     const events = tmData._embedded?.events || [];
     
-    console.log("[events] Found", events.length, "events for city:", city.trim());
+    console.log("[events] Found", events.length, "events");
     if (events.length === 0) {
-      console.warn("[events] No events found for city:", city.trim(), "date range:", startDate, "to", endDate);
+      console.warn("[events] No events returned by API for selected range.", 
+        "City:", city?.trim(), "Lat:", lat, "Lon:", lon,
+        "Date range:", startDate, "to", endDate);
+      // Log the full response page info for debugging
+      console.log("[events] Response page info:", JSON.stringify(tmData.page || {}));
     }
 
     // Map Ticketmaster classifications to our categories
@@ -101,7 +121,7 @@ Deno.serve(async (req) => {
       if (evt.priceRanges?.[0]?.max > 200) attendance = Math.max(attendance, 8000);
 
       return {
-        city: normalizedCity,
+        city: normalizedCity || `${lat},${lon}`,
         event_date: evt.dates?.start?.localDate || now.toISOString().split("T")[0],
         name: evt.name,
         category,
@@ -110,18 +130,19 @@ Deno.serve(async (req) => {
     });
 
     // Clear old cache for this city and insert new
+    const cacheCity = normalizedCity || `${lat},${lon}`;
     if (rows.length > 0) {
       await supabase
         .from("event_cache")
         .delete()
-        .eq("city", normalizedCity)
+        .eq("city", cacheCity)
         .lt("fetched_at", twentyFourHoursAgo);
 
       const { error: insertErr } = await supabase.from("event_cache").insert(rows);
       if (insertErr) console.error("[events] Cache insert error:", insertErr);
     }
 
-    return new Response(JSON.stringify({ source: "api", data: rows }), {
+    return new Response(JSON.stringify({ source: "api", data: rows, count: rows.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

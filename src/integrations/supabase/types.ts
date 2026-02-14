@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      alerts: {
+        Row: {
+          created_at: string
+          hotel_id: string
+          id: string
+          message: string
+          read_at: string | null
+          severity: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          hotel_id: string
+          id?: string
+          message: string
+          read_at?: string | null
+          severity?: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          hotel_id?: string
+          id?: string
+          message?: string
+          read_at?: string | null
+          severity?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alerts_hotel_id_fkey"
+            columns: ["hotel_id"]
+            isOneToOne: false
+            referencedRelation: "hotels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       historical_data: {
         Row: {
           average_daily_rate: number
@@ -179,6 +217,45 @@ export type Database = {
         }
         Relationships: []
       }
+      user_settings: {
+        Row: {
+          active_hotel_id: string | null
+          active_organization_id: string | null
+          created_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active_hotel_id?: string | null
+          active_organization_id?: string | null
+          created_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active_hotel_id?: string | null
+          active_organization_id?: string | null
+          created_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_settings_active_hotel_id_fkey"
+            columns: ["active_hotel_id"]
+            isOneToOne: false
+            referencedRelation: "hotels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_settings_active_organization_id_fkey"
+            columns: ["active_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -207,6 +284,7 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
+      set_active_hotel: { Args: { _hotel_id: string }; Returns: undefined }
     }
     Enums: {
       org_role: "owner" | "manager" | "viewer"

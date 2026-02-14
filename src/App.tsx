@@ -15,6 +15,8 @@ import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Onboarding from "./pages/Onboarding";
+import Settings from "./pages/Settings";
+import Notifications from "./pages/Notifications";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -41,6 +43,8 @@ const App = () => (
             {/* Auth + org required */}
             <Route path="/dashboard" element={<OnboardingGuard><Dashboard /></OnboardingGuard>} />
             <Route path="/data-import" element={<OnboardingGuard><DataImport /></OnboardingGuard>} />
+            <Route path="/settings" element={<OnboardingGuard><Settings /></OnboardingGuard>} />
+            <Route path="/notifications" element={<OnboardingGuard><Notifications /></OnboardingGuard>} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>

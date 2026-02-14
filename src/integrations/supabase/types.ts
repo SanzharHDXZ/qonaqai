@@ -70,7 +70,7 @@ export type Database = {
           organization_id: string
           rooms: number
           updated_at: string
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           avg_occupancy?: number
@@ -83,7 +83,7 @@ export type Database = {
           organization_id: string
           rooms?: number
           updated_at?: string
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           avg_occupancy?: number
@@ -96,7 +96,7 @@ export type Database = {
           organization_id?: string
           rooms?: number
           updated_at?: string
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {

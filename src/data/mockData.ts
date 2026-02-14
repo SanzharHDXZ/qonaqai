@@ -20,7 +20,7 @@ const today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date
 // ─── Hotel Profile (fallback only for unauthenticated/demo) ─
 
 export const hotelProfile = {
-  name: "Demo Hotel",
+  name: "Demo Environment",
   rooms: 85,
   city: "",
   avgOccupancy: 0.72,

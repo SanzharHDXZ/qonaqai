@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, BarChart3, Building2, Hotel, Save, Plus, Trash2, Wifi, WifiOff, MapPin, Bug } from "lucide-react";
+import { ChevronLeft, Building2, Hotel, Save, Plus, Trash2, Wifi, WifiOff, MapPin, Bug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { checkApiStatus } from "@/pricing-engine";
 import type { ApiStatus } from "@/pricing-engine";
 import UserMenu from "@/components/UserMenu";
+import QonaqLogo from "@/components/QonaqLogo";
 
 interface CompetitorEntry {
   id?: string;
@@ -262,12 +263,7 @@ export default function Settings() {
             <Link to="/dashboard" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <ChevronLeft className="h-4 w-4" />
             </Link>
-            <div className="flex items-center gap-2 font-semibold">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-                <BarChart3 className="h-3.5 w-3.5 text-primary-foreground" />
-              </div>
-              RevPilot
-            </div>
+            <QonaqLogo size="sm" />
             <span className="hidden sm:inline text-sm text-muted-foreground">/ Settings</span>
           </div>
           <UserMenu />

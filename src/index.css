@@ -2,110 +2,118 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 @layer base {
   :root {
-    --background: 220 20% 98%;
-    --foreground: 224 30% 15%;
+    --background: 40 20% 97%;
+    --foreground: 0 0% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 224 30% 15%;
+    --card-foreground: 0 0% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 224 30% 15%;
+    --popover-foreground: 0 0% 12%;
 
-    --primary: 226 70% 55%;
+    --primary: 181 62% 15%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 15% 94%;
-    --secondary-foreground: 224 30% 15%;
+    --secondary: 40 15% 93%;
+    --secondary-foreground: 0 0% 12%;
 
-    --muted: 220 15% 95%;
-    --muted-foreground: 220 10% 46%;
+    --muted: 40 12% 94%;
+    --muted-foreground: 0 0% 40%;
 
-    --accent: 226 60% 96%;
-    --accent-foreground: 226 70% 40%;
+    --accent: 181 30% 94%;
+    --accent-foreground: 181 62% 15%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 142 72% 42%;
+    --success: 142 60% 40%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;
+    --warning: 38 70% 50%;
     --warning-foreground: 0 0% 100%;
 
-    --border: 220 15% 91%;
-    --input: 220 15% 91%;
-    --ring: 226 70% 55%;
+    --gold: 43 72% 52%;
+    --gold-foreground: 0 0% 12%;
+    --gold-soft: 43 60% 63%;
 
-    --radius: 0.5rem;
+    --border: 30 15% 88%;
+    --input: 30 15% 88%;
+    --ring: 181 62% 15%;
+
+    --radius: 0.625rem;
 
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 224 30% 15%;
-    --sidebar-primary: 226 70% 55%;
+    --sidebar-foreground: 0 0% 12%;
+    --sidebar-primary: 181 62% 15%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 226 60% 96%;
-    --sidebar-accent-foreground: 226 70% 40%;
-    --sidebar-border: 220 15% 91%;
-    --sidebar-ring: 226 70% 55%;
+    --sidebar-accent: 181 30% 94%;
+    --sidebar-accent-foreground: 181 62% 15%;
+    --sidebar-border: 30 15% 88%;
+    --sidebar-ring: 181 62% 15%;
 
-    --chart-1: 226 70% 55%;
-    --chart-2: 142 72% 42%;
-    --chart-3: 38 92% 50%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 200 80% 50%;
+    --chart-1: 181 62% 15%;
+    --chart-2: 181 45% 30%;
+    --chart-3: 43 72% 52%;
+    --chart-4: 181 35% 45%;
+    --chart-5: 142 60% 40%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(226, 70%, 55%), hsl(240, 70%, 60%));
-    --gradient-hero: linear-gradient(135deg, hsl(226, 70%, 55%) 0%, hsl(260, 60%, 55%) 100%);
-    --shadow-card: 0 1px 3px 0 hsl(220, 15%, 91% / 0.5), 0 1px 2px -1px hsl(220, 15%, 91% / 0.5);
-    --shadow-elevated: 0 10px 25px -5px hsl(226, 70%, 55% / 0.1), 0 8px 10px -6px hsl(226, 70%, 55% / 0.05);
+    --gradient-primary: linear-gradient(135deg, hsl(181, 62%, 15%), hsl(181, 50%, 22%));
+    --gradient-hero: linear-gradient(135deg, hsl(181, 62%, 15%) 0%, hsl(181, 45%, 25%) 100%);
+    --shadow-card: 0 1px 3px 0 hsl(0 0% 0% / 0.04), 0 1px 2px -1px hsl(0 0% 0% / 0.03);
+    --shadow-elevated: 0 10px 25px -5px hsl(181, 62%, 15% / 0.08), 0 8px 10px -6px hsl(181, 62%, 15% / 0.04);
   }
 
   .dark {
-    --background: 224 30% 8%;
-    --foreground: 220 15% 94%;
+    --background: 180 20% 6%;
+    --foreground: 40 15% 93%;
 
-    --card: 224 25% 12%;
-    --card-foreground: 220 15% 94%;
+    --card: 180 18% 10%;
+    --card-foreground: 40 15% 93%;
 
-    --popover: 224 25% 12%;
-    --popover-foreground: 220 15% 94%;
+    --popover: 180 18% 10%;
+    --popover-foreground: 40 15% 93%;
 
-    --primary: 226 70% 60%;
+    --primary: 181 50% 40%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 224 20% 18%;
-    --secondary-foreground: 220 15% 94%;
+    --secondary: 180 15% 15%;
+    --secondary-foreground: 40 15% 93%;
 
-    --muted: 224 20% 18%;
-    --muted-foreground: 220 10% 55%;
+    --muted: 180 15% 15%;
+    --muted-foreground: 40 8% 55%;
 
-    --accent: 226 40% 18%;
-    --accent-foreground: 226 70% 70%;
+    --accent: 181 30% 14%;
+    --accent-foreground: 181 50% 55%;
 
     --destructive: 0 62% 45%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 142 60% 45%;
+    --success: 142 50% 42%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 80% 50%;
+    --warning: 38 60% 48%;
     --warning-foreground: 0 0% 100%;
 
-    --border: 224 20% 20%;
-    --input: 224 20% 20%;
-    --ring: 226 70% 60%;
+    --gold: 43 65% 50%;
+    --gold-foreground: 40 15% 93%;
+    --gold-soft: 43 50% 55%;
 
-    --sidebar-background: 224 30% 10%;
-    --sidebar-foreground: 220 15% 94%;
-    --sidebar-primary: 226 70% 60%;
+    --border: 180 15% 18%;
+    --input: 180 15% 18%;
+    --ring: 181 50% 40%;
+
+    --sidebar-background: 180 20% 8%;
+    --sidebar-foreground: 40 15% 93%;
+    --sidebar-primary: 181 50% 40%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 226 40% 18%;
-    --sidebar-accent-foreground: 226 70% 70%;
-    --sidebar-border: 224 20% 20%;
-    --sidebar-ring: 226 70% 60%;
+    --sidebar-accent: 181 30% 14%;
+    --sidebar-accent-foreground: 181 50% 55%;
+    --sidebar-border: 180 15% 18%;
+    --sidebar-ring: 181 50% 40%;
   }
 }
 
@@ -115,8 +123,8 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
+    @apply bg-background text-foreground antialiased;
+    font-family: 'DM Sans', system-ui, sans-serif;
   }
 }
 
@@ -126,9 +134,13 @@
     background-image: var(--gradient-hero);
   }
 
+  .text-gold {
+    color: hsl(var(--gold));
+  }
+
   .bg-grid {
     background-image: radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px);
-    background-size: 24px 24px;
+    background-size: 32px 32px;
   }
 
   .shadow-card {
@@ -137,5 +149,9 @@
 
   .shadow-elevated {
     box-shadow: var(--shadow-elevated);
+  }
+
+  .font-display {
+    font-family: 'Plus Jakarta Sans', 'DM Sans', system-ui, sans-serif;
   }
 }

@@ -1,12 +1,13 @@
 import { useState, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
-  BarChart3, ChevronLeft, Upload, FileText, AlertCircle, CheckCircle2,
+  ChevronLeft, Upload, FileText, AlertCircle, CheckCircle2,
   X, ArrowRight, Download, Settings, Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import UserMenu from "@/components/UserMenu";
+import QonaqLogo from "@/components/QonaqLogo";
 
 // ─── Types ─────────────────────────────────────────────
 interface CSVRow {
@@ -259,7 +260,7 @@ export default function DataImport() {
     // For now (before auth), store in localStorage as a pilot-ready data store
     // Once auth is added, this will be replaced with Supabase insert
     try {
-      const existingData = localStorage.getItem("revpilot_historical_data");
+      const existingData = localStorage.getItem("qonaqai_historical_data");
       const existing: ParsedRecord[] = existingData ? JSON.parse(existingData) : [];
       
       // Merge: overwrite existing dates, add new ones
@@ -268,7 +269,7 @@ export default function DataImport() {
         dateMap.set(rec.date, rec);
       }
       const merged = [...dateMap.values()].sort((a, b) => a.date.localeCompare(b.date));
-      localStorage.setItem("revpilot_historical_data", JSON.stringify(merged));
+      localStorage.setItem("qonaqai_historical_data", JSON.stringify(merged));
       
       setStep("complete");
       toast({ title: "Data imported!", description: `${validationResult.records.length} records saved. ${merged.length} total records.` });
@@ -285,7 +286,7 @@ export default function DataImport() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "revpilot_sample_data.csv";
+    a.download = "qonaqai_sample_data.csv";
     a.click();
     URL.revokeObjectURL(url);
   }, []);
@@ -299,12 +300,7 @@ export default function DataImport() {
             <Link to="/dashboard" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <ChevronLeft className="h-4 w-4" />
             </Link>
-            <div className="flex items-center gap-2 font-semibold">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-                <BarChart3 className="h-3.5 w-3.5 text-primary-foreground" />
-              </div>
-              RevPilot
-            </div>
+            <QonaqLogo size="sm" />
             <span className="hidden sm:inline text-sm text-muted-foreground">/ Data Import</span>
           </div>
           <div className="flex items-center gap-2">

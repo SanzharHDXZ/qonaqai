@@ -1,5 +1,5 @@
-export { calculateDemandScore, SEASONALITY_FACTORS, WEEKDAY_FACTORS, EVENT_IMPACTS, SCHEDULED_EVENTS } from "./demandModel";
-export type { DemandModelConfig, DemandResult, EventData } from "./demandModel";
+export { calculateDemandScore, SEASONALITY_FACTORS, WEEKDAY_FACTORS, EVENT_IMPACTS, SCHEDULED_EVENTS, DEFAULT_DEMAND_WEIGHTS } from "./demandModel";
+export type { DemandModelConfig, DemandResult, EventData, DemandWeights } from "./demandModel";
 
 export { calculatePrice } from "./priceOptimizer";
 export type { PriceRecommendation, PricingConfig } from "./priceOptimizer";
@@ -18,3 +18,6 @@ export type { BacktestDayResult, BacktestSummary, HistoricalRecord as BacktestHi
 
 export { computeHistoricalStats, getStoredHistoricalData } from "./historicalDemandModel";
 export type { HistoricalDemandStats, HistoricalRecord } from "./historicalDemandModel";
+
+export { calculateForecastAccuracy, buildForecastRecords } from "./forecastAccuracy";
+export type { ForecastRecord, ForecastAccuracyResult } from "./forecastAccuracy";

@@ -1,4 +1,4 @@
-import { Info, X } from "lucide-react";
+import { Info, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { DailyForecast } from "@/data/mockData";
 
@@ -10,57 +10,82 @@ interface ExplainPriceProps {
 
 interface FactorRow {
   label: string;
-  value: number;
-  contribution: number; // percentage contribution to final price
+  value: number | string;
+  score: number;
+  weight: number;
+  contribution: number;
   description: string;
 }
 
 export default function ExplainPrice({ forecast, basePrice, onClose }: ExplainPriceProps) {
-  // Calculate each factor's contribution to the final price
-  const rawProduct = forecast.seasonalityFactor * forecast.weekdayFactor * forecast.eventMultiplier * forecast.trendFactor;
-  
+  const components = forecast.demandComponents;
+  const weights = {
+    weekdayAvg: 0.30,
+    trend7Day: 0.20,
+    seasonality30Day: 0.20,
+    eventStrength: 0.15,
+    bookingPace: 0.15,
+  };
+
+  const totalWeighted =
+    weights.weekdayAvg * components.weekdayAvgScore +
+    weights.trend7Day * components.trendScore +
+    weights.seasonality30Day * components.seasonalityScore +
+    weights.eventStrength * components.eventScore +
+    weights.bookingPace * components.bookingPaceScore;
+
   const factors: FactorRow[] = [
     {
-      label: "Base Demand",
-      value: forecast.predictedOccupancy / 100,
-      contribution: (forecast.predictedOccupancy / 100) / (rawProduct * (forecast.predictedOccupancy / 100)) * 100,
-      description: `Historical base occupancy rate drives the foundation. Score: ${forecast.predictedOccupancy}%`,
+      label: "Historical Weekday Avg",
+      value: `×${forecast.weekdayFactor.toFixed(2)}`,
+      score: components.weekdayAvgScore,
+      weight: weights.weekdayAvg,
+      contribution: totalWeighted > 0 ? (weights.weekdayAvg * components.weekdayAvgScore / totalWeighted) * 100 : 0,
+      description: `Weekday occupancy pattern. Score: ${components.weekdayAvgScore}/100`,
     },
     {
-      label: "Seasonality Effect",
-      value: forecast.seasonalityFactor,
-      contribution: Math.abs(forecast.seasonalityFactor - 1) / Math.max(0.01, Math.abs(rawProduct - 1)) * 100,
-      description: `Month-based seasonal pattern. ${forecast.seasonalityFactor > 1 ? "High" : forecast.seasonalityFactor < 0.9 ? "Low" : "Normal"} season (×${forecast.seasonalityFactor.toFixed(2)})`,
+      label: "7-Day Trend",
+      value: `×${forecast.trendFactor.toFixed(3)}`,
+      score: components.trendScore,
+      weight: weights.trend7Day,
+      contribution: totalWeighted > 0 ? (weights.trend7Day * components.trendScore / totalWeighted) * 100 : 0,
+      description: `Rolling 7-day trend momentum. ${forecast.trendFactor > 1.02 ? "Upward" : forecast.trendFactor < 0.98 ? "Downward" : "Stable"} trend`,
     },
     {
-      label: "Day-of-Week Effect",
-      value: forecast.weekdayFactor,
-      contribution: Math.abs(forecast.weekdayFactor - 1) / Math.max(0.01, Math.abs(rawProduct - 1)) * 100,
-      description: `Weekend/weekday demand pattern. ${forecast.weekdayFactor > 1 ? "Weekend premium" : "Weekday discount"} (×${forecast.weekdayFactor.toFixed(2)})`,
+      label: "30-Day Seasonality",
+      value: `×${forecast.seasonalityFactor.toFixed(2)}`,
+      score: components.seasonalityScore,
+      weight: weights.seasonality30Day,
+      contribution: totalWeighted > 0 ? (weights.seasonality30Day * components.seasonalityScore / totalWeighted) * 100 : 0,
+      description: `Seasonal demand index. ${forecast.seasonalityFactor > 1 ? "High" : forecast.seasonalityFactor < 0.9 ? "Low" : "Normal"} season`,
     },
     {
-      label: "Event Impact",
-      value: forecast.eventMultiplier,
-      contribution: Math.abs(forecast.eventMultiplier - 1) / Math.max(0.01, Math.abs(rawProduct - 1)) * 100,
+      label: "Event Strength",
+      value: forecast.event ? `×${forecast.eventMultiplier.toFixed(2)}` : "None",
+      score: components.eventScore,
+      weight: weights.eventStrength,
+      contribution: totalWeighted > 0 ? (weights.eventStrength * components.eventScore / totalWeighted) * 100 : 0,
       description: forecast.event
-        ? `"${forecast.event}" is driving demand up (×${forecast.eventMultiplier.toFixed(2)})`
-        : `No events detected. Neutral impact (×1.00)`,
+        ? `"${forecast.event}" driving demand (×${forecast.eventMultiplier.toFixed(2)})`
+        : "No events detected",
     },
     {
-      label: "Trend Momentum",
-      value: forecast.trendFactor,
-      contribution: Math.abs(forecast.trendFactor - 1) / Math.max(0.01, Math.abs(rawProduct - 1)) * 100,
-      description: `14-day booking momentum. ${forecast.trendFactor > 1.02 ? "Upward trend" : forecast.trendFactor < 0.98 ? "Downward trend" : "Stable"} (×${forecast.trendFactor.toFixed(3)})`,
+      label: "Booking Pace Velocity",
+      value: forecast.bookingPaceVelocity > 0 ? `+${forecast.bookingPaceVelocity.toFixed(2)}` : forecast.bookingPaceVelocity.toFixed(2),
+      score: components.bookingPaceScore,
+      weight: weights.bookingPace,
+      contribution: totalWeighted > 0 ? (weights.bookingPace * components.bookingPaceScore / totalWeighted) * 100 : 0,
+      description: `Booking acceleration vs last month. ${forecast.bookingPaceVelocity > 0.1 ? "Accelerating" : forecast.bookingPaceVelocity < -0.1 ? "Decelerating" : "Normal pace"}`,
     },
   ];
 
-  // Price optimization step
   const priceChange = ((forecast.recommendedPrice - basePrice) / basePrice * 100);
   const pricingTierLabels: Record<string, string> = {
     discount: "Discount tier: demand below 50 → reduce price 10–20%",
     base: "Base tier: demand 50–70 → keep near base (±5%)",
     premium: "Premium tier: demand 70–85 → increase 10–25%",
     surge: "Surge tier: demand >85 → increase 30–50%",
+    saturation: "Saturation mode: occupancy >95% → profit-maximizing pricing",
   };
 
   return (
@@ -75,19 +100,21 @@ export default function ExplainPrice({ forecast, basePrice, onClose }: ExplainPr
         </Button>
       </div>
 
-      {/* Demand Score Breakdown */}
+      {/* Weighted Demand Score Breakdown */}
       <div className="space-y-3 mb-5">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Demand Score Breakdown</div>
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Weighted Demand Model (Score: {forecast.demandScore}/100)
+        </div>
         {factors.map((f) => (
           <div key={f.label} className="rounded-lg border border-border p-3">
             <div className="flex items-center justify-between mb-1">
               <span className="text-sm font-medium">{f.label}</span>
-              <span className={`text-sm font-bold ${f.value > 1.02 ? "text-success" : f.value < 0.98 ? "text-destructive" : ""}`}>
-                ×{typeof f.value === "number" && f.value < 1 ? f.value.toFixed(3) : f.value.toFixed(2)}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground">w={f.weight}</span>
+                <span className="text-sm font-bold">{f.value}</span>
+              </div>
             </div>
             <p className="text-xs text-muted-foreground">{f.description}</p>
-            {/* Contribution bar */}
             <div className="mt-2 flex items-center gap-2">
               <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
                 <div
@@ -103,6 +130,19 @@ export default function ExplainPrice({ forecast, basePrice, onClose }: ExplainPr
         ))}
       </div>
 
+      {/* Saturation Warning */}
+      {forecast.isSaturated && (
+        <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-3 mb-4 flex items-start gap-2">
+          <Zap className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <div className="text-xs font-medium text-primary">Demand Saturation Active</div>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Projected occupancy &gt;95%. Switched to profit-maximizing mode with +{Math.round(forecast.saturationBoost * 100)}% price boost.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Final Optimization Step */}
       <div className="rounded-lg border-2 border-primary/20 bg-accent/30 p-4">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
@@ -115,12 +155,13 @@ export default function ExplainPrice({ forecast, basePrice, onClose }: ExplainPr
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm">Pricing Tier</span>
           <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${
+            forecast.pricingTier === "saturation" ? "bg-primary/20 text-primary" :
             forecast.pricingTier === "surge" ? "bg-destructive/10 text-destructive" :
             forecast.pricingTier === "premium" ? "bg-success/10 text-success" :
             forecast.pricingTier === "discount" ? "bg-warning/10 text-warning" :
             "bg-muted text-muted-foreground"
           }`}>
-            {forecast.pricingTier}
+            {forecast.isSaturated ? "🔥 " : ""}{forecast.pricingTier}
           </span>
         </div>
         <p className="text-xs text-muted-foreground mb-3">

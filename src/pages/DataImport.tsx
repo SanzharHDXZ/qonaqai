@@ -288,7 +288,6 @@ export default function DataImport() {
         rooms_sold: r.rooms_sold,
         average_daily_rate: r.average_daily_rate,
         cancellations: r.cancellations,
-        occupancy_rate: r.rooms_available > 0 ? r.rooms_sold / r.rooms_available : 0,
       }));
 
       const batchSize = 500;

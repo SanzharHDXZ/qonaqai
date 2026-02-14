@@ -75,6 +75,7 @@ export default function Onboarding() {
 
   const selectCity = (suggestion: CitySuggestion) => {
     setSelectedCity(suggestion);
+    // Display clean "City, Country" — never store this as the city value
     setCityQuery(suggestion.label);
     setShowSuggestions(false);
     setCitySuggestions([]);
@@ -86,19 +87,20 @@ export default function Onboarding() {
 
     setSubmitting(true);
     try {
+      // Step 1: Create org (or get existing)
       const { data: orgId, error: orgError } = await supabase.rpc("create_org_and_owner", {
         _org_name: orgName.trim(),
       });
       if (orgError) throw orgError;
 
-      // MVP guard: check if org already has a hotel
+      // Step 2: Check if org already has a hotel (MVP: single hotel per org)
       const { data: existingHotels } = await supabase
         .from("hotels")
         .select("id")
         .eq("organization_id", orgId);
 
       if (existingHotels && existingHotels.length > 0) {
-        // Hotel already exists, just set it active and go
+        // Hotel already exists — reuse it, don't create another
         await supabase.rpc("set_active_hotel", { _hotel_id: existingHotels[0].id });
         await refreshMemberships();
         toast({ title: "Welcome back!", description: "Your hotel is already set up." });
@@ -106,16 +108,26 @@ export default function Onboarding() {
         return;
       }
 
+      // Step 3: Create hotel (DB function is also idempotent as a safety net)
       const { data: hotelId, error: hotelError } = await supabase.rpc("create_hotel_for_org", {
         _org_id: orgId,
         _name: hotelName.trim(),
-        _city: selectedCity.name,
+        _city: selectedCity.name, // Store just the city name, NOT the display label
         _rooms: parseInt(rooms) || 85,
         _base_price: parseFloat(basePrice) || 120,
       });
-      if (hotelError) throw hotelError;
+      if (hotelError) {
+        // Handle unique constraint violation gracefully
+        if (hotelError.message?.includes("unique") || hotelError.message?.includes("duplicate")) {
+          toast({ title: "This organization already has a hotel.", description: "Redirecting to dashboard.", variant: "destructive" });
+          await refreshMemberships();
+          navigate("/dashboard");
+          return;
+        }
+        throw hotelError;
+      }
 
-      // Update hotel with structured city data
+      // Step 4: Update with structured city data (separate fields, never the display label)
       await supabase
         .from("hotels")
         .update({
@@ -126,6 +138,8 @@ export default function Onboarding() {
         })
         .eq("id", hotelId);
 
+      // Step 5: Set as active hotel
+      await supabase.rpc("set_active_hotel", { _hotel_id: hotelId });
       await refreshMemberships();
 
       toast({ title: "Welcome to RevPilot!", description: `${orgName} and ${hotelName} created.` });
@@ -203,6 +217,11 @@ export default function Onboarding() {
                     </button>
                   ))}
                 </div>
+              )}
+              {selectedCity && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {selectedCity.name}, {selectedCity.country} — lat: {selectedCity.lat.toFixed(4)}, lon: {selectedCity.lon.toFixed(4)}
+                </p>
               )}
             </div>
             <div className="grid grid-cols-2 gap-3">
